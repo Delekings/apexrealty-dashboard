@@ -1,0 +1,894 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --brand: #1a5c38; --brand-light: #e8f5ee; --brand-mid: #2d7a4f;
+    --gold: #c9962a; --gold-light: #fdf3dc;
+    --danger: #c0392b; --danger-light: #fdecea;
+    --info: #1a6fa3; --info-light: #e6f2fb;
+    --warn: #b56b00; --warn-light: #fff4e0;
+    --bg: var(--color-background-primary);
+    --bg2: var(--color-background-secondary);
+    --bg3: var(--color-background-tertiary);
+    --text: var(--color-text-primary);
+    --muted: var(--color-text-secondary);
+    --border: var(--color-border-tertiary);
+    --border2: var(--color-border-secondary);
+    --rad: var(--border-radius-md);
+    --radl: var(--border-radius-lg);
+  }
+  .app { font-size: 14px; color: var(--text); }
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 0.5px solid var(--border);
+    background: var(--bg); position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-icon { width: 28px; height: 28px; background: var(--brand); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-name { font-size: 15px; font-weight: 500; color: var(--text); }
+  .logo-name span { color: var(--brand); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .badge-naija { background: var(--brand-light); color: var(--brand); font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 20px; }
+  .notif { position: relative; cursor: pointer; }
+  .notif-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%; border: 2px solid var(--bg); }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: white; font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+  .layout { display: flex; min-height: calc(100vh - 57px); }
+  .sidebar {
+    width: 200px; flex-shrink: 0; border-right: 0.5px solid var(--border);
+    padding: 12px 0; background: var(--bg); overflow-y: auto;
+  }
+  .nav-section { padding: 0 8px 8px; }
+  .nav-label { font-size: 10px; font-weight: 500; color: var(--muted); letter-spacing: 0.08em; padding: 8px 10px 4px; text-transform: uppercase; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    border-radius: var(--rad); cursor: pointer; font-size: 13px; color: var(--muted);
+    transition: all 0.15s; user-select: none;
+  }
+  .nav-item:hover { background: var(--bg2); color: var(--text); }
+  .nav-item.active { background: var(--brand-light); color: var(--brand); font-weight: 500; }
+  .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+  .nav-count { margin-left: auto; background: var(--brand); color: white; font-size: 10px; min-width: 18px; height: 18px; border-radius: 9px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+
+  .content { flex: 1; overflow-y: auto; background: var(--bg3); }
+  .page { display: none; padding: 20px; }
+  .page.active { display: block; }
+  .page-header { margin-bottom: 16px; }
+  .page-title { font-size: 18px; font-weight: 500; color: var(--text); }
+  .page-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radl); padding: 14px 16px; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .stat-val { font-size: 22px; font-weight: 500; color: var(--text); }
+  .stat-sub { font-size: 11px; margin-top: 4px; }
+  .stat-up { color: var(--brand); }
+  .stat-down { color: var(--danger); }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radl); padding: 16px; }
+  .card-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .card-action { font-size: 12px; color: var(--brand); cursor: pointer; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; border-bottom: 0.5px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 0.5px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg2); }
+
+  .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .pill-green { background: var(--brand-light); color: var(--brand); }
+  .pill-red { background: var(--danger-light); color: var(--danger); }
+  .pill-gold { background: var(--gold-light); color: var(--gold); }
+  .pill-blue { background: var(--info-light); color: var(--info); }
+  .pill-gray { background: var(--bg2); color: var(--muted); }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--rad); font-size: 13px; font-weight: 500; cursor: pointer; border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); transition: all 0.15s; }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--brand); color: white; border-color: var(--brand); }
+  .btn-primary:hover { background: var(--brand-mid); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+  .search-bar { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 0.5px solid var(--border2); border-radius: var(--rad); padding: 7px 12px; margin-bottom: 12px; }
+  .search-bar input { border: none; background: none; font-size: 13px; color: var(--text); outline: none; flex: 1; }
+
+  .timeline { list-style: none; }
+  .tl-item { display: flex; gap: 12px; padding-bottom: 14px; position: relative; }
+  .tl-item:not(:last-child)::before { content: ''; position: absolute; left: 7px; top: 18px; bottom: 0; width: 1px; background: var(--border); }
+  .tl-dot { width: 15px; height: 15px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; }
+  .tl-dot-green { background: var(--brand); }
+  .tl-dot-gold { background: var(--gold); }
+  .tl-dot-red { background: var(--danger); }
+  .tl-dot-blue { background: var(--info); }
+  .tl-dot-gray { background: var(--muted); }
+  .tl-body { flex: 1; }
+  .tl-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .tl-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .progress-bar { height: 6px; background: var(--bg2); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .progress-fill { height: 100%; border-radius: 3px; background: var(--brand); }
+  .progress-fill-gold { background: var(--gold); }
+  .progress-fill-red { background: var(--danger); }
+
+  .staff-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radl); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .staff-top { display: flex; align-items: center; gap: 10px; }
+  .staff-av { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: white; flex-shrink: 0; }
+
+  .kpi-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 60px; background: var(--bg2); border-radius: var(--rad); padding: 8px; text-align: center; }
+  .kpi-val { font-size: 16px; font-weight: 500; }
+  .kpi-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  .alert-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--rad); margin-bottom: 8px; }
+  .alert-red { background: var(--danger-light); border-left: 3px solid var(--danger); }
+  .alert-gold { background: var(--gold-light); border-left: 3px solid var(--gold); }
+  .alert-green { background: var(--brand-light); border-left: 3px solid var(--brand); }
+  .alert-title { font-size: 13px; font-weight: 500; }
+  .alert-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .doc-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 0.5px solid var(--border); }
+  .doc-item:last-child { border-bottom: none; }
+  .doc-icon { width: 32px; height: 32px; background: var(--info-light); border-radius: var(--rad); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 16px; }
+  .doc-body { flex: 1; }
+  .doc-name { font-size: 13px; font-weight: 500; }
+  .doc-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+  .chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 70px; margin-top: 8px; }
+  .bar { flex: 1; background: var(--brand-light); border-radius: 3px 3px 0 0; transition: background 0.2s; min-height: 4px; }
+  .bar:hover { background: var(--brand); }
+  .bar-labels { display: flex; gap: 4px; margin-top: 4px; }
+  .bar-lbl { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-field { display: flex; flex-direction: column; gap: 4px; }
+  .form-field label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .form-field input, .form-field select, .form-field textarea {
+    padding: 8px 10px; border: 0.5px solid var(--border2); border-radius: var(--rad);
+    background: var(--bg); color: var(--text); font-size: 13px; outline: none;
+  }
+  .form-field input:focus, .form-field select:focus { border-color: var(--brand); }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--bg); border-radius: var(--radl); padding: 20px; width: 90%; max-width: 480px; border: 0.5px solid var(--border); }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .modal-title { font-size: 15px; font-weight: 500; }
+  .modal-close { cursor: pointer; color: var(--muted); font-size: 18px; }
+
+  .pay-track { display: flex; gap: 0; margin: 8px 0; }
+  .pay-seg { height: 8px; flex: 1; }
+  .pay-seg:first-child { border-radius: 4px 0 0 4px; }
+  .pay-seg:last-child { border-radius: 0 4px 4px 0; }
+  .pay-paid { background: var(--brand); }
+  .pay-due { background: var(--gold); }
+  .pay-left { background: var(--bg2); }
+
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 0.5px solid var(--border); }
+  .tab { padding: 8px 14px; font-size: 13px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -0.5px; }
+  .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 500; }
+
+  .empty-state { text-align: center; padding: 30px 20px; color: var(--muted); font-size: 13px; }
+
+  .receipt-box { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radl); padding: 16px; max-width: 360px; margin: 0 auto; }
+  .receipt-logo { text-align: center; font-size: 15px; font-weight: 500; color: var(--brand); margin-bottom: 4px; }
+  .receipt-sub { text-align: center; font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .receipt-divider { border: none; border-top: 1px dashed var(--border2); margin: 10px 0; }
+  .receipt-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+  .receipt-total { display: flex; justify-content: space-between; font-size: 14px; font-weight: 500; padding: 6px 0 0; }
+
+  .summary-box { background: var(--bg2); border-radius: var(--rad); padding: 10px 14px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .summary-icon { font-size: 20px; }
+
+  @media (max-width: 600px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .two-col, .three-col { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="app">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 16 16"><path d="M8 1L1 6v9h5v-5h4v5h5V6L8 1z"/></svg>
+      </div>
+      <div class="logo-name">Apex<span>Realty</span> NG</div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge-naija">🇳🇬 Nigeria Office</span>
+      <div class="notif" onclick="showPage('alerts')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <div class="notif-dot"></div>
+      </div>
+      <div class="avatar">AD</div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="nav-section">
+        <div class="nav-label">Overview</div>
+        <div class="nav-item active" onclick="showPage('overview', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+          Dashboard
+        </div>
+        <div class="nav-item" onclick="showPage('alerts', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Alerts <span class="nav-count">5</span>
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Clients</div>
+        <div class="nav-item" onclick="showPage('clients', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          All Clients
+        </div>
+        <div class="nav-item" onclick="showPage('onboard-client', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Onboard Client
+        </div>
+        <div class="nav-item" onclick="showPage('installments', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          Installments <span class="nav-count">3</span>
+        </div>
+        <div class="nav-item" onclick="showPage('reminders', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M12 22a2 2 0 0 0 2-2H10a2 2 0 0 0 2 2z"/></svg>
+          Reminders
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Documents</div>
+        <div class="nav-item" onclick="showPage('documents', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          DocuSign
+        </div>
+        <div class="nav-item" onclick="showPage('receipts', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          Receipts
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Staff</div>
+        <div class="nav-item" onclick="showPage('staff', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+          Performance
+        </div>
+        <div class="nav-item" onclick="showPage('onboard-staff', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Onboard Staff
+        </div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Properties</div>
+        <div class="nav-item" onclick="showPage('properties', this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Properties
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- OVERVIEW -->
+      <div class="page active" id="page-overview">
+        <div class="page-header">
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub">Welcome back, Admin — Nigerian time is <span id="ng-time">loading...</span></div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-label">Total Clients</div>
+            <div class="stat-val">47</div>
+            <div class="stat-sub stat-up">↑ 3 this month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Revenue (₦)</div>
+            <div class="stat-val">₦184M</div>
+            <div class="stat-sub stat-up">↑ 12% vs last month</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Overdue Payments</div>
+            <div class="stat-val">3</div>
+            <div class="stat-sub stat-down">↑ 1 new today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Active Properties</div>
+            <div class="stat-val">18</div>
+            <div class="stat-sub stat-up">6 fully sold</div>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title">Monthly Revenue (₦M) <span class="card-action" onclick="sendPrompt('Show me a detailed revenue breakdown for ApexRealty')">View full →</span></div>
+            <div class="chart-bars">
+              <div class="bar" style="height:40%" title="Nov"></div>
+              <div class="bar" style="height:55%" title="Dec"></div>
+              <div class="bar" style="height:48%" title="Jan"></div>
+              <div class="bar" style="height:70%" title="Feb"></div>
+              <div class="bar" style="height:62%" title="Mar"></div>
+              <div class="bar" style="height:90%; background: var(--brand);" title="Apr"></div>
+            </div>
+            <div class="bar-labels">
+              <div class="bar-lbl">Nov</div><div class="bar-lbl">Dec</div><div class="bar-lbl">Jan</div>
+              <div class="bar-lbl">Feb</div><div class="bar-lbl">Mar</div><div class="bar-lbl">Apr</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Recent Activity</div>
+            <ul class="timeline">
+              <li class="tl-item">
+                <div class="tl-dot tl-dot-green"></div>
+                <div class="tl-body"><div class="tl-title">Payment received — Chukwuemeka A.</div><div class="tl-meta">₦2,500,000 installment · 2hrs ago</div></div>
+              </li>
+              <li class="tl-item">
+                <div class="tl-dot tl-dot-gold"></div>
+                <div class="tl-body"><div class="tl-title">Reminder sent — Ngozi Eze</div><div class="tl-meta">Payment due in 3 days · 4hrs ago</div></div>
+              </li>
+              <li class="tl-item">
+                <div class="tl-dot tl-dot-blue"></div>
+                <div class="tl-body"><div class="tl-title">DocuSign sent — Sale Agreement</div><div class="tl-meta">Babatunde Okafor · yesterday</div></div>
+              </li>
+              <li class="tl-item">
+                <div class="tl-dot tl-dot-red"></div>
+                <div class="tl-body"><div class="tl-title">Overdue — Amara Nwosu</div><div class="tl-meta">₦1,800,000 · 5 days overdue</div></div>
+              </li>
+              <li class="tl-item">
+                <div class="tl-dot tl-dot-gray"></div>
+                <div class="tl-body"><div class="tl-title">New staff onboarded — Tola Adeyemi</div><div class="tl-meta">Sales Agent · 2 days ago</div></div>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="three-col">
+          <div class="card">
+            <div class="card-title">Payment Status</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">47 active client contracts</div>
+            <div style="font-size:12px;margin-bottom:3px;">Fully Paid <strong>22</strong></div>
+            <div class="progress-bar"><div class="progress-fill" style="width:47%"></div></div>
+            <div style="font-size:12px;margin:8px 0 3px;">On Schedule <strong>22</strong></div>
+            <div class="progress-bar"><div class="progress-fill progress-fill-gold" style="width:47%"></div></div>
+            <div style="font-size:12px;margin:8px 0 3px;">Overdue <strong>3</strong></div>
+            <div class="progress-bar"><div class="progress-fill progress-fill-red" style="width:6%"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Top Staff (April)</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                <div class="staff-av" style="background:var(--brand);width:28px;height:28px;font-size:11px;">TO</div>
+                <div style="flex:1">Tola Adeyemi</div><strong>₦28M</strong>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                <div class="staff-av" style="background:var(--info);width:28px;height:28px;font-size:11px;">KA</div>
+                <div style="flex:1">Kemi Adesanya</div><strong>₦21M</strong>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+                <div class="staff-av" style="background:var(--gold);width:28px;height:28px;font-size:11px;">EM</div>
+                <div style="flex:1">Emeka Obi</div><strong>₦18M</strong>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Upcoming Due</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div class="alert-item alert-red" style="padding:8px 10px;">
+                <div><div class="alert-title">Amara Nwosu</div><div class="alert-meta">₦1.8M — 5 days overdue</div></div>
+              </div>
+              <div class="alert-item alert-gold" style="padding:8px 10px;">
+                <div><div class="alert-title">Ngozi Eze</div><div class="alert-meta">₦2.1M — due in 3 days</div></div>
+              </div>
+              <div class="alert-item alert-gold" style="padding:8px 10px;">
+                <div><div class="alert-title">Seun Falola</div><div class="alert-meta">₦900K — due in 7 days</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CLIENTS PAGE -->
+      <div class="page" id="page-clients">
+        <div class="page-header"><div class="page-title">All Clients</div></div>
+        <div class="btns">
+          <button class="btn btn-primary btn-sm" onclick="showPage('onboard-client', document.querySelector('.nav-item:nth-child(8)'))">+ Onboard New Client</button>
+          <button class="btn btn-sm">Export CSV</button>
+          <button class="btn btn-sm">Filter</button>
+        </div>
+        <div class="search-bar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input placeholder="Search clients…" /></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Property</th><th>Contract Value</th><th>Paid</th><th>Status</th><th>Agent</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td><div style="font-weight:500">Chukwuemeka Adeyemi</div><div style="font-size:11px;color:var(--muted)">+234 803 123 4567</div></td><td>Lekki Phase 2 - 3BR</td><td>₦45,000,000</td><td>₦30,000,000</td><td><span class="pill pill-green">On Track</span></td><td>Tola A.</td><td><button class="btn btn-sm" onclick="showPage('installments', null)">View</button></td></tr>
+                <tr><td><div style="font-weight:500">Ngozi Eze</div><div style="font-size:11px;color:var(--muted)">+234 806 987 6543</div></td><td>Abuja FCT - Duplex</td><td>₦72,000,000</td><td>₦50,400,000</td><td><span class="pill pill-gold">Due Soon</span></td><td>Kemi A.</td><td><button class="btn btn-sm">View</button></td></tr>
+                <tr><td><div style="font-weight:500">Amara Nwosu</div><div style="font-size:11px;color:var(--muted)">+234 701 456 7890</div></td><td>GRA Enugu - 4BR</td><td>₦38,000,000</td><td>₦28,500,000</td><td><span class="pill pill-red">Overdue</span></td><td>Emeka O.</td><td><button class="btn btn-sm" onclick="openModal('modal-reminder')">Remind</button></td></tr>
+                <tr><td><div style="font-weight:500">Babatunde Okafor</div><div style="font-size:11px;color:var(--muted)">+234 809 234 5678</div></td><td>Ikoyi - 2BR Flat</td><td>₦95,000,000</td><td>₦95,000,000</td><td><span class="pill pill-blue">Fully Paid</span></td><td>Tola A.</td><td><button class="btn btn-sm" onclick="showPage('receipts', null)">Receipt</button></td></tr>
+                <tr><td><div style="font-weight:500">Seun Falola</div><div style="font-size:11px;color:var(--muted)">+234 817 567 8901</div></td><td>VI Lagos - Studio</td><td>₦28,500,000</td><td>₦19,950,000</td><td><span class="pill pill-green">On Track</span></td><td>Kemi A.</td><td><button class="btn btn-sm">View</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ONBOARD CLIENT -->
+      <div class="page" id="page-onboard-client">
+        <div class="page-header"><div class="page-title">Onboard New Client</div><div class="page-sub">Fill in details to create a new client record and contract</div></div>
+        <div class="card">
+          <div class="tab-bar">
+            <div class="tab active" onclick="switchTab(this,'ob1')">Personal Info</div>
+            <div class="tab" onclick="switchTab(this,'ob2')">Property & Payment</div>
+            <div class="tab" onclick="switchTab(this,'ob3')">Documents</div>
+          </div>
+          <div id="ob1">
+            <div class="form-row">
+              <div class="form-field"><label>Full Name</label><input placeholder="e.g. Adaeze Okonkwo"/></div>
+              <div class="form-field"><label>Phone Number</label><input placeholder="+234 800 000 0000"/></div>
+            </div>
+            <div class="form-row">
+              <div class="form-field"><label>Email</label><input placeholder="email@example.com" type="email"/></div>
+              <div class="form-field"><label>NIN / ID Number</label><input placeholder="NIN or passport number"/></div>
+            </div>
+            <div class="form-row">
+              <div class="form-field"><label>State of Origin</label><select><option>Lagos</option><option>Abuja</option><option>Enugu</option><option>Rivers</option><option>Kano</option><option>Other</option></select></div>
+              <div class="form-field"><label>Referral Source</label><select><option>Agent Referral</option><option>Social Media</option><option>Website</option><option>Walk-In</option><option>Other</option></select></div>
+            </div>
+            <div class="btns"><button class="btn btn-primary" onclick="nextObTab()">Next: Property & Payment →</button></div>
+          </div>
+          <div id="ob2" style="display:none">
+            <div class="form-row">
+              <div class="form-field"><label>Property</label><select><option>Lekki Phase 2 - 3BR</option><option>Abuja FCT - Duplex</option><option>GRA Enugu - 4BR</option><option>Ikoyi - 2BR Flat</option><option>VI Lagos - Studio</option></select></div>
+              <div class="form-field"><label>Contract Value (₦)</label><input placeholder="e.g. 45000000" type="number"/></div>
+            </div>
+            <div class="form-row">
+              <div class="form-field"><label>Initial Deposit (₦)</label><input placeholder="e.g. 5000000" type="number"/></div>
+              <div class="form-field"><label>Installment Frequency</label><select><option>Monthly</option><option>Quarterly</option><option>Bi-Annual</option><option>Annual</option></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-field"><label>Installment Amount (₦)</label><input placeholder="Auto-calculated"/></div>
+              <div class="form-field"><label>Assigned Agent</label><select><option>Tola Adeyemi</option><option>Kemi Adesanya</option><option>Emeka Obi</option></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-field"><label>Payment Start Date</label><input type="date"/></div>
+              <div class="form-field"><label>Payment Method</label><select><option>Bank Transfer</option><option>Cheque</option><option>Cash</option><option>USSD</option></select></div>
+            </div>
+            <div class="btns"><button class="btn btn-primary" onclick="nextObTab()">Next: Documents →</button></div>
+          </div>
+          <div id="ob3" style="display:none">
+            <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">These documents will be sent via DocuSign for client e-signature.</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox" checked> Sale and Purchase Agreement</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox" checked> Installment Payment Schedule</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox"> Survey/Title Document</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox"> Governor's Consent Form</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox"> Client ID Upload</label>
+            </div>
+            <div class="btns">
+              <button class="btn btn-primary" onclick="alert('✅ Client onboarded! DocuSign requests sent to client email.')">Complete Onboarding & Send DocuSign</button>
+              <button class="btn">Save as Draft</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INSTALLMENTS -->
+      <div class="page" id="page-installments">
+        <div class="page-header"><div class="page-title">Installment Tracker</div><div class="page-sub">Monitor client payment schedules and dues</div></div>
+        <div class="btns">
+          <button class="btn btn-primary btn-sm" onclick="openModal('modal-payment')">+ Record Payment</button>
+          <button class="btn btn-sm">Filter by Agent</button>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">Chukwuemeka Adeyemi — Lekki Phase 2 (3BR)</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Contract: ₦45,000,000 · 18 installments of ₦2,500,000 · Monthly</div>
+          <div class="pay-track">
+            <div class="pay-seg pay-paid" style="flex:12"></div>
+            <div class="pay-seg pay-due" style="flex:1"></div>
+            <div class="pay-seg pay-left" style="flex:5"></div>
+          </div>
+          <div style="display:flex;gap:16px;font-size:11px;margin-top:4px;">
+            <span style="color:var(--brand)">▪ Paid: ₦30M (12 of 18)</span>
+            <span style="color:var(--gold)">▪ Due: ₦2.5M (Apr)</span>
+            <span style="color:var(--muted)">▪ Remaining: ₦12.5M</span>
+          </div>
+          <div class="table-wrap" style="margin-top:10px;">
+            <table>
+              <thead><tr><th>#</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Paid On</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td>Mar 2024</td><td>₦2,500,000</td><td><span class="pill pill-blue">Paid</span></td><td>Mar 2</td></tr>
+                <tr><td>2–11</td><td>Apr–Jan</td><td>₦25,000,000</td><td><span class="pill pill-blue">Paid</span></td><td>On time</td></tr>
+                <tr><td>12</td><td>Feb 2025</td><td>₦2,500,000</td><td><span class="pill pill-blue">Paid</span></td><td>Feb 5</td></tr>
+                <tr><td>13</td><td>Apr 2025</td><td>₦2,500,000</td><td><span class="pill pill-gold">Due</span></td><td>—</td></tr>
+                <tr><td>14–18</td><td>May–Sep</td><td>₦12,500,000</td><td><span class="pill pill-gray">Upcoming</span></td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="border-color: var(--danger);">
+          <div class="card-title" style="color:var(--danger)">Amara Nwosu — GRA Enugu 4BR · OVERDUE</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">₦1,800,000 overdue by 5 days · Last reminder: 3 days ago</div>
+          <div class="pay-track">
+            <div class="pay-seg pay-paid" style="flex:9"></div>
+            <div class="pay-seg pay-left" style="flex:3" style="background:var(--danger)"></div>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button class="btn btn-sm" onclick="openModal('modal-reminder')">Send Reminder</button>
+            <button class="btn btn-sm btn-primary" onclick="openModal('modal-payment')">Record Payment</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- REMINDERS -->
+      <div class="page" id="page-reminders">
+        <div class="page-header"><div class="page-title">Payment Reminders</div><div class="page-sub">Automated and manual reminder management</div></div>
+        <div class="two-col" style="margin-bottom:12px;">
+          <div class="card">
+            <div class="card-title">Automation Settings</div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+                <span>7 days before due</span>
+                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" checked> SMS + Email</label>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+                <span>3 days before due</span>
+                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" checked> SMS + Email</label>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+                <span>Due date</span>
+                <label style="display:flex;align-items:center;gap=6px;"><input type="checkbox" checked> WhatsApp + SMS</label>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+                <span>1 day overdue</span>
+                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" checked> Call + WhatsApp</label>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;">
+                <span>7 days overdue</span>
+                <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox"> Formal Letter</label>
+              </div>
+              <button class="btn btn-primary btn-sm">Save Settings</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Send Manual Reminder</div>
+            <div class="form-field" style="margin-bottom:8px;"><label>Client</label><select><option>Amara Nwosu (Overdue)</option><option>Ngozi Eze (Due in 3 days)</option><option>Seun Falola (Due in 7 days)</option></select></div>
+            <div class="form-field" style="margin-bottom:8px;"><label>Channel</label><select><option>WhatsApp</option><option>SMS</option><option>Email</option><option>All Channels</option></select></div>
+            <div class="form-field" style="margin-bottom:12px;"><label>Message</label><textarea rows="3" style="font-size:13px;width:100%">Dear [Client Name], your installment of ₦[Amount] for [Property] is due on [Date]. Please make payment to GTBank Acc: 0123456789. Contact us: +234 800 000 0000.</textarea></div>
+            <button class="btn btn-primary btn-sm" onclick="alert('✅ Reminder sent via WhatsApp and SMS to Amara Nwosu')">Send Reminder</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Reminder Log</div>
+          <table>
+            <thead><tr><th>Client</th><th>Date Sent</th><th>Channel</th><th>Type</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Amara Nwosu</td><td>Apr 20, 2025</td><td>WhatsApp + SMS</td><td>Overdue</td><td><span class="pill pill-blue">Delivered</span></td></tr>
+              <tr><td>Ngozi Eze</td><td>Apr 21, 2025</td><td>Email + SMS</td><td>3-day warning</td><td><span class="pill pill-blue">Delivered</span></td></tr>
+              <tr><td>Seun Falola</td><td>Apr 18, 2025</td><td>Email</td><td>7-day warning</td><td><span class="pill pill-blue">Delivered</span></td></tr>
+              <tr><td>Chukwuemeka A.</td><td>Apr 15, 2025</td><td>SMS</td><td>7-day warning</td><td><span class="pill pill-blue">Delivered</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- DOCUMENTS -->
+      <div class="page" id="page-documents">
+        <div class="page-header"><div class="page-title">Documents & DocuSign</div><div class="page-sub">Send, track, and manage client contracts and agreements</div></div>
+        <div class="btns">
+          <button class="btn btn-primary btn-sm" onclick="openModal('modal-docusign')">+ Send for Signature</button>
+          <button class="btn btn-sm">Upload Template</button>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title">Pending Signatures</div>
+            <div class="doc-item">
+              <div class="doc-icon">📄</div>
+              <div class="doc-body"><div class="doc-name">Sale Agreement — B. Okafor</div><div class="doc-meta">Sent Apr 21 · Awaiting client signature</div></div>
+              <span class="pill pill-gold">Pending</span>
+            </div>
+            <div class="doc-item">
+              <div class="doc-icon">📋</div>
+              <div class="doc-body"><div class="doc-name">Payment Schedule — N. Eze</div><div class="doc-meta">Sent Apr 19 · Viewed, not signed</div></div>
+              <span class="pill pill-gold">Pending</span>
+            </div>
+            <div class="doc-item">
+              <div class="doc-icon">🏠</div>
+              <div class="doc-body"><div class="doc-name">Title Deed — S. Falola</div><div class="doc-meta">Sent Apr 10 · Opened twice</div></div>
+              <span class="pill pill-gold">Pending</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Signed Documents</div>
+            <div class="doc-item">
+              <div class="doc-icon">✅</div>
+              <div class="doc-body"><div class="doc-name">Sale Agreement — C. Adeyemi</div><div class="doc-meta">Signed Apr 15, 2025 · PDF downloaded</div></div>
+              <span class="pill pill-green">Signed</span>
+            </div>
+            <div class="doc-item">
+              <div class="doc-icon">✅</div>
+              <div class="doc-body"><div class="doc-name">Payment Schedule — A. Nwosu</div><div class="doc-meta">Signed Mar 3, 2025</div></div>
+              <span class="pill pill-green">Signed</span>
+            </div>
+            <div class="doc-item">
+              <div class="doc-icon">✅</div>
+              <div class="doc-body"><div class="doc-name">Governor's Consent — B. Okafor</div><div class="doc-meta">Signed Feb 10, 2025</div></div>
+              <span class="pill pill-green">Signed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECEIPTS -->
+      <div class="page" id="page-receipts">
+        <div class="page-header"><div class="page-title">Receipts</div><div class="page-sub">Generate and manage payment receipts</div></div>
+        <div class="btns"><button class="btn btn-primary btn-sm" onclick="openModal('modal-payment')">+ Generate Receipt</button><button class="btn btn-sm">Download All</button></div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-title">Recent Receipts</div>
+            <table>
+              <thead><tr><th>Receipt #</th><th>Client</th><th>Amount</th><th>Date</th><th></th></tr></thead>
+              <tbody>
+                <tr><td>RCP-0047</td><td>Chukwuemeka A.</td><td>₦2,500,000</td><td>Apr 22</td><td><button class="btn btn-sm" onclick="showReceipt()">View</button></td></tr>
+                <tr><td>RCP-0046</td><td>Ngozi Eze</td><td>₦4,000,000</td><td>Apr 18</td><td><button class="btn btn-sm">View</button></td></tr>
+                <tr><td>RCP-0045</td><td>Seun Falola</td><td>₦2,850,000</td><td>Apr 10</td><td><button class="btn btn-sm">View</button></td></tr>
+                <tr><td>RCP-0044</td><td>Babatunde O.</td><td>₦5,000,000</td><td>Mar 30</td><td><button class="btn btn-sm">View</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="receipt-panel" class="receipt-box">
+            <div class="receipt-logo">APEX REALTY NG</div>
+            <div class="receipt-sub">RC 1234567 · Victoria Island, Lagos, Nigeria<br>info@apexrealtyng.com · +234 800 000 0000</div>
+            <div style="font-size:12px;text-align:center;font-weight:500;margin-bottom:4px;">OFFICIAL PAYMENT RECEIPT</div>
+            <hr class="receipt-divider">
+            <div class="receipt-row"><span>Receipt #</span><strong>RCP-0047</strong></div>
+            <div class="receipt-row"><span>Date</span><span>April 22, 2025</span></div>
+            <div class="receipt-row"><span>Client</span><span>Chukwuemeka Adeyemi</span></div>
+            <div class="receipt-row"><span>Property</span><span>Lekki Phase 2 - 3BR</span></div>
+            <div class="receipt-row"><span>Installment</span><span>No. 13 of 18</span></div>
+            <hr class="receipt-divider">
+            <div class="receipt-row"><span>Amount Paid</span><span>₦2,500,000</span></div>
+            <div class="receipt-row"><span>Payment Method</span><span>Bank Transfer</span></div>
+            <div class="receipt-row"><span>Transaction Ref</span><span>GTB20250422...</span></div>
+            <hr class="receipt-divider">
+            <div class="receipt-total"><span>Outstanding Balance</span><strong style="color:var(--gold)">₦12,500,000</strong></div>
+            <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:12px;">This is an official receipt. Thank you for your business.</div>
+            <div style="text-align:center;margin-top:10px;"><button class="btn btn-primary btn-sm">Download PDF</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAFF PERFORMANCE -->
+      <div class="page" id="page-staff">
+        <div class="page-header"><div class="page-title">Staff Performance</div><div class="page-sub">Track agent KPIs, sales, and activity</div></div>
+        <div class="three-col">
+          <div class="staff-card">
+            <div class="staff-top">
+              <div class="staff-av" style="background:var(--brand)">TO</div>
+              <div><div style="font-weight:500;font-size:13px">Tola Adeyemi</div><div style="font-size:11px;color:var(--muted)">Sales Agent · Lagos</div></div>
+              <span class="pill pill-green" style="margin-left:auto">Active</span>
+            </div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="kpi-val" style="color:var(--brand)">₦28M</div><div class="kpi-lbl">Sales</div></div>
+              <div class="kpi"><div class="kpi-val">5</div><div class="kpi-lbl">Clients</div></div>
+              <div class="kpi"><div class="kpi-val">94%</div><div class="kpi-lbl">Follow-up</div></div>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">Target progress</div>
+            <div class="progress-bar"><div class="progress-fill" style="width:78%"></div></div>
+            <div style="font-size:11px;color:var(--muted)">₦28M of ₦36M target</div>
+          </div>
+          <div class="staff-card">
+            <div class="staff-top">
+              <div class="staff-av" style="background:var(--info)">KA</div>
+              <div><div style="font-weight:500;font-size:13px">Kemi Adesanya</div><div style="font-size:11px;color:var(--muted)">Sales Agent · Abuja</div></div>
+              <span class="pill pill-green" style="margin-left:auto">Active</span>
+            </div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="kpi-val" style="color:var(--brand)">₦21M</div><div class="kpi-lbl">Sales</div></div>
+              <div class="kpi"><div class="kpi-val">4</div><div class="kpi-lbl">Clients</div></div>
+              <div class="kpi"><div class="kpi-val">88%</div><div class="kpi-lbl">Follow-up</div></div>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">Target progress</div>
+            <div class="progress-bar"><div class="progress-fill progress-fill-gold" style="width:58%"></div></div>
+            <div style="font-size:11px;color:var(--muted)">₦21M of ₦36M target</div>
+          </div>
+          <div class="staff-card">
+            <div class="staff-top">
+              <div class="staff-av" style="background:var(--gold)">EO</div>
+              <div><div style="font-weight:500;font-size:13px">Emeka Obi</div><div style="font-size:11px;color:var(--muted)">Sales Agent · Enugu</div></div>
+              <span class="pill pill-green" style="margin-left:auto">Active</span>
+            </div>
+            <div class="kpi-row">
+              <div class="kpi"><div class="kpi-val" style="color:var(--brand)">₦18M</div><div class="kpi-lbl">Sales</div></div>
+              <div class="kpi"><div class="kpi-val">3</div><div class="kpi-lbl">Clients</div></div>
+              <div class="kpi"><div class="kpi-val">76%</div><div class="kpi-lbl">Follow-up</div></div>
+            </div>
+            <div style="font-size:12px;color:var(--muted)">Target progress</div>
+            <div class="progress-bar"><div class="progress-fill progress-fill-red" style="width:50%"></div></div>
+            <div style="font-size:11px;color:var(--muted)">₦18M of ₦36M target</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:0">
+          <div class="card-title">Full Staff Directory</div>
+          <table>
+            <thead><tr><th>Name</th><th>Role</th><th>Location</th><th>Clients</th><th>Sales Apr</th><th>Target %</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Tola Adeyemi</td><td>Sales Agent</td><td>Lagos</td><td>5</td><td>₦28M</td><td><span class="pill pill-green">78%</span></td><td><span class="pill pill-green">Active</span></td></tr>
+              <tr><td>Kemi Adesanya</td><td>Sales Agent</td><td>Abuja</td><td>4</td><td>₦21M</td><td><span class="pill pill-gold">58%</span></td><td><span class="pill pill-green">Active</span></td></tr>
+              <tr><td>Emeka Obi</td><td>Sales Agent</td><td>Enugu</td><td>3</td><td>₦18M</td><td><span class="pill pill-red">50%</span></td><td><span class="pill pill-green">Active</span></td></tr>
+              <tr><td>Amina Bello</td><td>Admin Officer</td><td>Lagos</td><td>—</td><td>—</td><td>—</td><td><span class="pill pill-green">Active</span></td></tr>
+              <tr><td>Femi Oladele</td><td>Legal Officer</td><td>Lagos</td><td>—</td><td>—</td><td>—</td><td><span class="pill pill-gold">Leave</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ONBOARD STAFF -->
+      <div class="page" id="page-onboard-staff">
+        <div class="page-header"><div class="page-title">Onboard New Staff</div></div>
+        <div class="card">
+          <div class="form-row">
+            <div class="form-field"><label>Full Name</label><input placeholder="e.g. Funmilayo Adesola"/></div>
+            <div class="form-field"><label>Phone</label><input placeholder="+234 800 000 0000"/></div>
+          </div>
+          <div class="form-row">
+            <div class="form-field"><label>Email</label><input type="email" placeholder="work email"/></div>
+            <div class="form-field"><label>Role</label><select><option>Sales Agent</option><option>Senior Agent</option><option>Admin Officer</option><option>Legal Officer</option><option>Manager</option></select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-field"><label>Office Location</label><select><option>Lagos</option><option>Abuja</option><option>Enugu</option><option>Port Harcourt</option><option>Kano</option></select></div>
+            <div class="form-field"><label>Monthly Target (₦)</label><input type="number" placeholder="e.g. 36000000"/></div>
+          </div>
+          <div class="form-row">
+            <div class="form-field"><label>Start Date</label><input type="date"/></div>
+            <div class="form-field"><label>Commission Rate</label><select><option>3%</option><option>4%</option><option>5%</option><option>Custom</option></select></div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:500;color:var(--muted);margin-bottom:6px;">SEND TO STAFF</div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;"><input type="checkbox" checked> Staff Employment Contract (DocuSign)</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;"><input type="checkbox" checked> Company Policy Handbook</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;"><input type="checkbox"> Commission Structure Agreement</label>
+          </div>
+          <div class="btns">
+            <button class="btn btn-primary" onclick="alert('✅ Staff onboarded! Login credentials and contracts sent to their email.')">Create Account & Send Welcome Email</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROPERTIES -->
+      <div class="page" id="page-properties">
+        <div class="page-header"><div class="page-title">Property Listings</div></div>
+        <div class="btns"><button class="btn btn-primary btn-sm">+ Add Property</button></div>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Available</div><div class="stat-val">8</div></div>
+          <div class="stat-card"><div class="stat-label">In Payment Plan</div><div class="stat-val">10</div></div>
+          <div class="stat-card"><div class="stat-label">Fully Sold</div><div class="stat-val">6</div></div>
+          <div class="stat-card"><div class="stat-label">Total Value (₦)</div><div class="stat-val">₦2.4B</div></div>
+        </div>
+        <div class="card" style="padding:0">
+          <table>
+            <thead><tr><th>Property</th><th>Location</th><th>Type</th><th>Price (₦)</th><th>Status</th><th>Agent</th></tr></thead>
+            <tbody>
+              <tr><td style="font-weight:500">Lekki Phase 2 - 3BR</td><td>Lagos</td><td>Apartment</td><td>₦45,000,000</td><td><span class="pill pill-gold">In Plan</span></td><td>Tola A.</td></tr>
+              <tr><td style="font-weight:500">Abuja FCT - Duplex</td><td>Abuja</td><td>Duplex</td><td>₦72,000,000</td><td><span class="pill pill-gold">In Plan</span></td><td>Kemi A.</td></tr>
+              <tr><td style="font-weight:500">GRA Enugu - 4BR</td><td>Enugu</td><td>Bungalow</td><td>₦38,000,000</td><td><span class="pill pill-gold">In Plan</span></td><td>Emeka O.</td></tr>
+              <tr><td style="font-weight:500">Ikoyi - 2BR Flat</td><td>Lagos</td><td>Apartment</td><td>₦95,000,000</td><td><span class="pill pill-blue">Sold</span></td><td>Tola A.</td></tr>
+              <tr><td style="font-weight:500">Ajah Estate - Land</td><td>Lagos</td><td>Land</td><td>₦18,000,000</td><td><span class="pill pill-green">Available</span></td><td>—</td></tr>
+              <tr><td style="font-weight:500">Maitama Mansion</td><td>Abuja</td><td>Mansion</td><td>₦180,000,000</td><td><span class="pill pill-green">Available</span></td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ALERTS -->
+      <div class="page" id="page-alerts">
+        <div class="page-header"><div class="page-title">Alerts & Notifications</div></div>
+        <div class="alert-item alert-red"><div><div class="alert-title">Overdue Payment — Amara Nwosu</div><div class="alert-meta">₦1,800,000 is 5 days overdue · GRA Enugu · Agent: Emeka Obi</div></div><button class="btn btn-sm" style="margin-left:auto" onclick="openModal('modal-reminder')">Remind</button></div>
+        <div class="alert-item alert-gold"><div><div class="alert-title">Payment Due in 3 Days — Ngozi Eze</div><div class="alert-meta">₦2,100,000 due Apr 26 · Abuja FCT Duplex</div></div></div>
+        <div class="alert-item alert-gold"><div><div class="alert-title">DocuSign Pending — Babatunde Okafor</div><div class="alert-meta">Sale Agreement sent Apr 21 — not yet signed</div></div></div>
+        <div class="alert-item alert-gold"><div><div class="alert-title">Staff Target Alert — Emeka Obi</div><div class="alert-meta">Only at 50% of April target with 8 days left</div></div></div>
+        <div class="alert-item alert-green"><div><div class="alert-title">Payment Received — Chukwuemeka Adeyemi</div><div class="alert-meta">₦2,500,000 received Apr 22 · Receipt RCP-0047 generated</div></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Record Payment / Generate Receipt -->
+<div class="modal-overlay" id="modal-payment">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Record Payment</div><div class="modal-close" onclick="closeModal('modal-payment')">×</div></div>
+    <div class="form-row">
+      <div class="form-field"><label>Client</label><select><option>Chukwuemeka Adeyemi</option><option>Ngozi Eze</option><option>Amara Nwosu</option></select></div>
+      <div class="form-field"><label>Amount (₦)</label><input type="number" placeholder="2500000"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-field"><label>Payment Date</label><input type="date"/></div>
+      <div class="form-field"><label>Payment Method</label><select><option>Bank Transfer</option><option>Cash</option><option>Cheque</option></select></div>
+    </div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Transaction Reference</label><input placeholder="Bank ref / teller number"/></div>
+    <div class="btns">
+      <button class="btn btn-primary" onclick="closeModal('modal-payment');showPage('receipts',null);showReceipt()">Record & Generate Receipt</button>
+      <button class="btn" onclick="closeModal('modal-payment')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Send Reminder -->
+<div class="modal-overlay" id="modal-reminder">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Send Payment Reminder</div><div class="modal-close" onclick="closeModal('modal-reminder')">×</div></div>
+    <div class="form-field" style="margin-bottom:8px;"><label>Client</label><select><option>Amara Nwosu — ₦1.8M OVERDUE</option><option>Ngozi Eze — due in 3 days</option></select></div>
+    <div class="form-field" style="margin-bottom:8px;"><label>Channel</label><select><option>All Channels (WhatsApp + SMS + Email)</option><option>WhatsApp only</option><option>SMS only</option><option>Email only</option></select></div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Message Preview</label><textarea rows="4" style="font-size:12px;width:100%">Dear Amara, your installment of ₦1,800,000 for GRA Enugu 4BR was due Apr 18, 2025 and is now OVERDUE. Please make payment urgently to GTBank 0123456789 (Apex Realty NG). Contact us: +234 800 000 0000. Thank you.</textarea></div>
+    <div class="btns">
+      <button class="btn btn-primary" onclick="closeModal('modal-reminder');alert('✅ Reminder sent on all channels to Amara Nwosu')">Send Reminder</button>
+      <button class="btn" onclick="closeModal('modal-reminder')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DocuSign -->
+<div class="modal-overlay" id="modal-docusign">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Send Document for Signature</div><div class="modal-close" onclick="closeModal('modal-docusign')">×</div></div>
+    <div class="form-row">
+      <div class="form-field"><label>Client</label><select><option>Babatunde Okafor</option><option>Ngozi Eze</option><option>Seun Falola</option></select></div>
+      <div class="form-field"><label>Document Type</label><select><option>Sale Agreement</option><option>Payment Schedule</option><option>Title Deed</option><option>Governor's Consent</option></select></div>
+    </div>
+    <div class="form-field" style="margin-bottom:8px;"><label>Client Email</label><input placeholder="client@email.com" type="email"/></div>
+    <div class="form-field" style="margin-bottom:12px;"><label>Message to Client</label><textarea rows="2" style="font-size:12px;width:100%">Please review and sign the attached document at your earliest convenience.</textarea></div>
+    <div class="btns">
+      <button class="btn btn-primary" onclick="closeModal('modal-docusign');alert('✅ Document sent for e-signature via DocuSign')">Send for Signature</button>
+      <button class="btn" onclick="closeModal('modal-docusign')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showPage(id, navEl) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const pg = document.getElementById('page-' + id);
+  if (pg) pg.classList.add('active');
+  if (navEl) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    navEl.classList.add('active');
+  }
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function showReceipt() { document.getElementById('receipt-panel').scrollIntoView({behavior:'smooth'}); }
+function nextObTab() {
+  const tabs = ['ob1','ob2','ob3'];
+  const tabEls = document.querySelectorAll('.tab-bar .tab');
+  const active = document.querySelector('[id^="ob"]:not([style*="none"])');
+  if (!active) return;
+  const idx = tabs.indexOf(active.id);
+  if (idx < tabs.length - 1) {
+    active.style.display = 'none';
+    document.getElementById(tabs[idx+1]).style.display = 'block';
+    tabEls[idx].classList.remove('active');
+    tabEls[idx+1].classList.add('active');
+  }
+}
+function switchTab(el, id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['ob1','ob2','ob3'].forEach(tid => {
+    const el = document.getElementById(tid);
+    if (el) el.style.display = tid === id ? 'block' : 'none';
+  });
+}
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+function updateNGTime() {
+  const now = new Date();
+  const ng = new Intl.DateTimeFormat('en-NG', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true }).format(now);
+  const el = document.getElementById('ng-time');
+  if (el) el.textContent = ng + ' WAT';
+}
+updateNGTime();
+setInterval(updateNGTime, 60000);
+</script>
