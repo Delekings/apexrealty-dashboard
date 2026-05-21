@@ -21,6 +21,7 @@ import '../../features/reminders/presentation/screens/reminders_screen.dart';
 import '../../features/staff/presentation/screens/staff_screen.dart';
 import '../../features/contracts/presentation/screens/new_contract_screen.dart';
 import '../../features/contracts/presentation/screens/contract_detail_screen.dart';
+import '../../features/contracts/presentation/screens/contracts_screen.dart';
 import 'app_shell.dart';
 
 /// The single source of truth for navigation.
@@ -115,6 +116,11 @@ final routerProvider = Provider<GoRouter>((ref) {
               propertyId: state.pathParameters['id']!,
             ),
           ),
+          GoRoute(
+            path: '/contracts',
+            builder: (_, __) => const ContractsScreen(),
+          ),
+
           GoRoute(
             path: '/contracts/new',
             builder: (_, state) {
