@@ -725,12 +725,15 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
                 fontSize: 16, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         Text(
-          r.isLastSigner
+          r.needsBuyerWitness
+              ? "Thank you. ${ctx.agencyName} will add your witness's details, "
+              "and you'll receive an update once the document is fully signed."
+              : r.isLastSigner
               ? 'All parties have now signed. A copy will be sent to your email.'
-              : 'Thank you. The next signer (${_nextRoleLabel(r.nextSignerRole)}) has been notified.',
+              : 'Thank you. The next signer '
+              '(${_nextRoleLabel(r.nextSignerRole)}) has been notified.',
           textAlign: TextAlign.center,
-          style: const TextStyle(
-              fontSize: 12, color: AppColors.muted),
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
         ),
 
         // Dev helper: show the next signer's link

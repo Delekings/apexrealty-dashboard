@@ -118,6 +118,7 @@ class SignResult {
     this.nextSignerToken,
     this.needsBuyerWitness = false,
   });
+
   factory SignResult.fromMap(Map<String, dynamic> m) => SignResult(
     signerId: m['out_signer_id'] as String,
     documentId: m['out_document_id'] as String,
@@ -130,6 +131,7 @@ class SignResult {
     nextSignerToken: (m['next_signer_token'] as String?)?.isEmpty == true
         ? null
         : m['next_signer_token'] as String?,
+    needsBuyerWitness: m['needs_buyer_witness'] as bool? ?? false,
   );
 
   bool get isLastSigner => nextSignerRole == null || nextSignerRole!.isEmpty;
