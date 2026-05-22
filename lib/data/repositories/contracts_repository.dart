@@ -44,9 +44,10 @@ class ContractsRepository {
   Future<ContractDetail> getDetail(String id) async {
     final c = await _c.from('contracts').select('''
           *,
-          client:clients(id, full_name, phone, email),
-          property:properties(id, title, location, state, cover_image_url),
-          agent:profiles!agent_id(id, full_name)
+          client:clients(id, full_name, phone, email, address),
+          property:properties(id, title, location, state, lga, size_sqm, cover_image_url),
+          agent:profiles!agent_id(id, full_name),
+          agency:agencies(id, name, rc_number, address)
         ''').eq('id', id).single();
 
     final installments = await _c
@@ -63,13 +64,29 @@ class ContractsRepository {
 
     return ContractDetail(
       contract: Contract.fromMap(c),
+
+      // Client
       clientName: (c['client'] as Map?)?['full_name'] as String? ?? '—',
       clientPhone: (c['client'] as Map?)?['phone'] as String? ?? '',
+      clientEmail: (c['client'] as Map?)?['email'] as String?,
+      clientAddress: (c['client'] as Map?)?['address'] as String?,
+
+      // Property
       propertyTitle: (c['property'] as Map?)?['title'] as String? ?? '—',
       propertyLocation: (c['property'] as Map?)?['location'] as String? ?? '',
       propertyState: (c['property'] as Map?)?['state'] as String? ?? '',
+      propertyLga: (c['property'] as Map?)?['lga'] as String?,
+      propertySizeSqm: (c['property'] as Map?)?['size_sqm'] as num?,
       propertyCoverUrl: (c['property'] as Map?)?['cover_image_url'] as String?,
+
+      // Agent
       agentName: (c['agent'] as Map?)?['full_name'] as String?,
+
+      // Agency (for PDF generation)
+      agencyName: (c['agency'] as Map?)?['name'] as String?,
+      agencyRcNumber: (c['agency'] as Map?)?['rc_number'] as String?,
+      agencyAddress: (c['agency'] as Map?)?['address'] as String?,
+
       installments: (installments as List)
           .map((r) => Installment.fromMap(r as Map<String, dynamic>))
           .toList(),
@@ -108,7 +125,9 @@ class ContractsRepository {
     String? receiptUrl;
     if (receiptBytes != null && receiptFilename != null) {
       final ext = receiptFilename.contains('.')
-          ? receiptFilename.substring(receiptFilename.lastIndexOf('.') + 1).toLowerCase()
+          ? receiptFilename
+          .substring(receiptFilename.lastIndexOf('.') + 1)
+          .toLowerCase()
           : 'jpg';
       final path = '$agencyId/$contractId/${_uuid.v4()}.$ext';
 
@@ -117,7 +136,6 @@ class ContractsRepository {
         receiptBytes,
         fileOptions: FileOptions(contentType: _mime(ext)),
       );
-      // For private buckets we store the path; we'll generate signed URLs when displaying.
       receiptUrl = path;
     }
 
@@ -138,7 +156,7 @@ class ContractsRepository {
   Future<String> signedReceiptUrl(String storagePath) async {
     final res = await _c.storage
         .from('payment-receipts')
-        .createSignedUrl(storagePath, 3600);  // 1 hour
+        .createSignedUrl(storagePath, 3600); // 1 hour
     return res;
   }
 
@@ -154,13 +172,29 @@ class ContractsRepository {
 
 class ContractDetail {
   final Contract contract;
+
+  // Client
   final String clientName;
   final String clientPhone;
+  final String? clientEmail;
+  final String? clientAddress;
+
+  // Property
   final String propertyTitle;
   final String propertyLocation;
   final String propertyState;
+  final String? propertyLga;
+  final num? propertySizeSqm;
   final String? propertyCoverUrl;
+
+  // Agent
   final String? agentName;
+
+  // Agency (for PDF generation)
+  final String? agencyName;
+  final String? agencyRcNumber;
+  final String? agencyAddress;
+
   final List<Installment> installments;
   final List<PaymentRecord> payments;
 
@@ -173,8 +207,15 @@ class ContractDetail {
     required this.propertyState,
     required this.installments,
     required this.payments,
+    this.clientEmail,
+    this.clientAddress,
+    this.propertyLga,
+    this.propertySizeSqm,
     this.propertyCoverUrl,
     this.agentName,
+    this.agencyName,
+    this.agencyRcNumber,
+    this.agencyAddress,
   });
 
   num get totalPaid =>

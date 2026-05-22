@@ -25,6 +25,7 @@ const _nav = <_NavEntry>[
   _NavEntry('Installments', Icons.payments_outlined, '/installments', badge: 3, section: 'Clients'),
 
   _NavEntry('DocuSign', Icons.description_outlined, '/documents', section: 'Documents'),
+  _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures', section: 'Settings'),
 
   _NavEntry('Staff', Icons.badge_outlined, '/staff', section: 'Staff'),
 

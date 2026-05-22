@@ -22,6 +22,9 @@ import '../../features/staff/presentation/screens/staff_screen.dart';
 import '../../features/contracts/presentation/screens/new_contract_screen.dart';
 import '../../features/contracts/presentation/screens/contract_detail_screen.dart';
 import '../../features/contracts/presentation/screens/contracts_screen.dart';
+import '../../features/settings/presentation/screens/signatures_settings_screen.dart';
+import '../../features/signing/screens/signing_screen.dart';
+
 import 'app_shell.dart';
 
 /// The single source of truth for navigation.
@@ -71,7 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/sign/:token',
-        builder: (_, state) => _SigningPlaceholder(
+        builder: (_, state) => SigningScreen(
           token: state.pathParameters['token']!,
         ),
       ),
@@ -80,6 +83,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
+          GoRoute(
+            path: '/settings/signatures',
+            builder: (_, __) => const SignaturesSettingsScreen(),
+          ),
           GoRoute(
             path: '/',
             builder: (_, __) => const DashboardScreen(),

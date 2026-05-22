@@ -21,6 +21,18 @@ class SaleAgreementInput {
   final String agencySignerName;
   final String? agencySignerTitle;
 
+  // Client signature (filled in after they sign)
+  final Uint8List? clientSignatureImage;
+  final String? clientSignedAtDisplay; // e.g. "21 May 2026"
+
+// Vendor witness (filled in after they sign)
+  final Uint8List? vendorWitnessSignatureImage;
+  final String? vendorWitnessSignedAtDisplay;
+
+// Buyer witness (filled in after they sign)
+  final Uint8List? buyerWitnessSignatureImage;
+  final String? buyerWitnessSignedAtDisplay;
+
   // Client
   final String clientFullName;
   final String? clientAddress;
@@ -55,6 +67,12 @@ class SaleAgreementInput {
   final String? buyerWitnessAddress;
 
   SaleAgreementInput({
+    this.clientSignatureImage,
+    this.clientSignedAtDisplay,
+    this.vendorWitnessSignatureImage,
+    this.vendorWitnessSignedAtDisplay,
+    this.buyerWitnessSignatureImage,
+    this.buyerWitnessSignedAtDisplay,
     required this.agencyName,
     this.agencyRcNumber,
     required this.agencyAddress,
@@ -91,6 +109,214 @@ class SaleAgreementInput {
 class SaleAgreementPdf {
   static final _money = NumberFormat('#,##0', 'en_NG');
   static final _date = DateFormat('d MMMM, yyyy');
+  /// Builds the final fully-signed PDF: same content, all signatures
+  /// embedded, plus an audit page at the end.
+  static Future<Uint8List> buildSignedWithAudit({
+    required SaleAgreementInput input,
+    required List<SignerAuditInfo> auditEntries,
+  }) async {
+    final doc = pw.Document(
+      title: 'Sale Agreement (signed) - ${input.contractNo}',
+      author: input.agencyName,
+    );
+
+    pw.MemoryImage? agencySig;
+    if (input.agencySignatureImage != null) {
+      agencySig = pw.MemoryImage(input.agencySignatureImage!);
+    }
+
+    // Main agreement pages (same as unsigned, but signatures now embedded)
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(48, 48, 48, 48),
+        header: (_) => _header(input),
+        footer: (ctx) => _footer(ctx, input),
+        build: (_) => [
+          _title(input),
+          pw.SizedBox(height: 18),
+          _parties(input),
+          pw.SizedBox(height: 14),
+          _recitals(input),
+          pw.SizedBox(height: 14),
+          _heading('1. Property'),
+          _propertyBlock(input),
+          pw.SizedBox(height: 10),
+          _heading('2. Purchase Price'),
+          _priceBlock(input),
+          pw.SizedBox(height: 10),
+          _heading('3. Payment Plan'),
+          _planBlock(input),
+          pw.SizedBox(height: 10),
+          _heading('4. Title & Transfer'),
+          _paragraph(
+              'Upon full payment of the Purchase Price stated in Clause 2 above, '
+                  'the Vendor shall execute and deliver to the Purchaser all '
+                  'documents required to vest legal title to the Property in the '
+                  'Purchaser, including but not limited to a Deed of Assignment '
+                  'and any registrable instrument required under the Land Use '
+                  'Act of Nigeria.'),
+          pw.SizedBox(height: 10),
+          _heading('5. Default'),
+          _paragraph(
+              'In the event that the Purchaser defaults on any scheduled '
+                  'installment and fails to remedy such default within thirty '
+                  '(30) days of written notice from the Vendor, the Vendor may '
+                  'at its sole discretion terminate this Agreement and refund '
+                  'the Purchaser any amounts already paid less an administrative '
+                  'charge not exceeding ten percent (10%) of the total amounts '
+                  'received.'),
+          pw.SizedBox(height: 10),
+          _heading('6. Force Majeure'),
+          _paragraph(
+              'Neither party shall be liable for any failure or delay in '
+                  'performance under this Agreement due to events outside the '
+                  'reasonable control of the party, including but not limited '
+                  'to acts of God, governmental orders, civil unrest, '
+                  'pandemics, or natural disasters.'),
+          pw.SizedBox(height: 10),
+          _heading('7. Governing Law'),
+          _paragraph(
+              'This Agreement shall be governed by and construed in '
+                  'accordance with the laws of the Federal Republic of Nigeria. '
+                  'Any dispute arising out of or in connection with this '
+                  'Agreement shall be referred to the courts of ${input.propertyState} State.'),
+          pw.SizedBox(height: 22),
+          _signatureBlocks(input, agencySig),
+          pw.SizedBox(height: 16),
+          _witnessBlocks(input),
+        ],
+      ),
+    );
+
+    // Audit page
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(48, 48, 48, 48),
+        header: (_) => _header(input),
+        footer: (ctx) => _footer(ctx, input),
+        build: (_) => [
+          pw.SizedBox(height: 10),
+          pw.Text('SIGNATURE AUDIT TRAIL',
+              style: pw.TextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 1.2)),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'The following parties electronically signed this document. Each '
+                'signature is associated with an audit record below.',
+            style: const pw.TextStyle(
+                fontSize: 10, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 16),
+          for (final entry in auditEntries) _auditEntry(entry),
+          pw.SizedBox(height: 20),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: pw.BorderRadius.circular(4),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('About this audit trail',
+                    style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey800)),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Each signatory verified their identity via a one-time code '
+                      'sent to their email address before signing. Signatures were '
+                      'recorded with timestamps and the IP address used to access '
+                      'the signing portal. This document was prepared and '
+                      'distributed via Lintel, an electronic signature platform.',
+                  style: const pw.TextStyle(
+                      fontSize: 8, color: PdfColors.grey800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return await doc.save();
+  }
+
+  static pw.Widget _auditEntry(SignerAuditInfo e) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 12),
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400, width: 0.5),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#1A5C38'),
+                  borderRadius: pw.BorderRadius.circular(3),
+                ),
+                child: pw.Text(e.role.toUpperCase(),
+                    style: pw.TextStyle(
+                        fontSize: 8,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.white)),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Text(e.name,
+                  style: pw.TextStyle(
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
+            ],
+          ),
+          pw.SizedBox(height: 4),
+          if (e.email != null) _auditKv('Email', e.email!),
+          _auditKv('Signature method', e.method),
+          _auditKv(
+              'Signed at',
+              DateFormat('d MMMM yyyy, HH:mm:ss').format(e.signedAt.toLocal())),
+          if (e.otpVerifiedAt != null)
+            _auditKv(
+                'OTP verified at',
+                DateFormat('d MMMM yyyy, HH:mm:ss')
+                    .format(e.otpVerifiedAt!.toLocal())),
+          if (e.ip != null && e.ip!.isNotEmpty)
+            _auditKv('IP address', e.ip!),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _auditKv(String k, String v) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 1),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: 110,
+            child: pw.Text(k,
+                style: const pw.TextStyle(
+                    fontSize: 9, color: PdfColors.grey700)),
+          ),
+          pw.Expanded(
+            child: pw.Text(v,
+                style: const pw.TextStyle(fontSize: 9)),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Builds the unsigned-but-agency-signed PDF. Returns the bytes.
   static Future<Uint8List> build(SaleAgreementInput i) async {
@@ -357,6 +583,11 @@ class SaleAgreementPdf {
 
   static pw.Widget _signatureBlocks(
       SaleAgreementInput i, pw.MemoryImage? agencySig) {
+    pw.MemoryImage? clientSig;
+    if (i.clientSignatureImage != null) {
+      clientSig = pw.MemoryImage(i.clientSignatureImage!);
+    }
+
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -415,16 +646,22 @@ class SaleAgreementPdf {
                       fontWeight: pw.FontWeight.bold,
                       color: PdfColors.grey700)),
               pw.SizedBox(height: 6),
-              // Blank line for now — will be filled when client signs
-              pw.Container(
-                height: 50,
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(
-                    bottom:
-                    pw.BorderSide(color: PdfColors.grey600, width: 0.5),
+              if (clientSig != null)
+                pw.Container(
+                  height: 50,
+                  alignment: pw.Alignment.centerLeft,
+                  child: pw.Image(clientSig, height: 50),
+                )
+              else
+                pw.Container(
+                  height: 50,
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(
+                      bottom:
+                      pw.BorderSide(color: PdfColors.grey600, width: 0.5),
+                    ),
                   ),
                 ),
-              ),
               pw.SizedBox(height: 4),
               pw.Text(i.clientFullName,
                   style: pw.TextStyle(
@@ -434,9 +671,11 @@ class SaleAgreementPdf {
               if (i.clientEmail != null && i.clientEmail!.isNotEmpty)
                 pw.Text('Email: ${i.clientEmail}',
                     style: const pw.TextStyle(fontSize: 9)),
-              pw.Text('Date: ____________________',
-                  style: const pw.TextStyle(
-                      fontSize: 9, color: PdfColors.grey700)),
+              pw.Text(
+                'Date: ${i.clientSignedAtDisplay ?? "____________________"}',
+                style: const pw.TextStyle(
+                    fontSize: 9, color: PdfColors.grey700),
+              ),
             ],
           ),
         ),
@@ -445,6 +684,15 @@ class SaleAgreementPdf {
   }
 
   static pw.Widget _witnessBlocks(SaleAgreementInput i) {
+    pw.MemoryImage? vendorSig;
+    pw.MemoryImage? buyerSig;
+    if (i.vendorWitnessSignatureImage != null) {
+      vendorSig = pw.MemoryImage(i.vendorWitnessSignatureImage!);
+    }
+    if (i.buyerWitnessSignatureImage != null) {
+      buyerSig = pw.MemoryImage(i.buyerWitnessSignatureImage!);
+    }
+
     return pw.Container(
       padding: const pw.EdgeInsets.only(top: 12),
       decoration: const pw.BoxDecoration(
@@ -464,19 +712,27 @@ class SaleAgreementPdf {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Expanded(child: _witnessBlock(
-                heading: "Vendor's Witness",
-                name: i.vendorWitnessName,
-                occupation: i.vendorWitnessOccupation,
-                address: i.vendorWitnessAddress,
-              )),
+              pw.Expanded(
+                child: _witnessBlock(
+                  heading: "Vendor's Witness",
+                  name: i.vendorWitnessName,
+                  occupation: i.vendorWitnessOccupation,
+                  address: i.vendorWitnessAddress,
+                  signature: vendorSig,
+                  signedDate: i.vendorWitnessSignedAtDisplay,
+                ),
+              ),
               pw.SizedBox(width: 24),
-              pw.Expanded(child: _witnessBlock(
-                heading: "Purchaser's Witness",
-                name: i.buyerWitnessName ?? '____________________',
-                occupation: i.buyerWitnessOccupation,
-                address: i.buyerWitnessAddress,
-              )),
+              pw.Expanded(
+                child: _witnessBlock(
+                  heading: "Purchaser's Witness",
+                  name: i.buyerWitnessName ?? '____________________',
+                  occupation: i.buyerWitnessOccupation,
+                  address: i.buyerWitnessAddress,
+                  signature: buyerSig,
+                  signedDate: i.buyerWitnessSignedAtDisplay,
+                ),
+              ),
             ],
           ),
         ],
@@ -489,6 +745,8 @@ class SaleAgreementPdf {
     required String name,
     String? occupation,
     String? address,
+    pw.MemoryImage? signature,
+    String? signedDate,
   }) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -497,19 +755,26 @@ class SaleAgreementPdf {
             style: pw.TextStyle(
                 fontSize: 9, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 4),
-        pw.Container(
-          height: 40,
-          decoration: const pw.BoxDecoration(
-            border: pw.Border(
-              bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.5),
+        if (signature != null)
+          pw.Container(
+            height: 40,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Image(signature, height: 40),
+          )
+        else
+          pw.Container(
+            height: 40,
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.5),
+              ),
             ),
           ),
-        ),
         pw.SizedBox(height: 4),
         _kv('Name:', name),
         _kv('Occupation:', occupation ?? '____________________'),
         _kv('Address:', address ?? '____________________'),
-        _kv('Date:', '____________________'),
+        _kv('Date:', signedDate ?? '____________________'),
       ],
     );
   }
@@ -608,3 +873,25 @@ class SaleAgreementPdf {
     return parts.join(' ');
   }
 }
+
+
+class SignerAuditInfo {
+  final String role;            // 'Agency', 'Purchaser', 'Vendor witness', 'Buyer witness'
+  final String name;
+  final String? email;
+  final String method;          // 'drawn' | 'typed' | 'uploaded'
+  final DateTime signedAt;
+  final String? ip;
+  final DateTime? otpVerifiedAt;
+
+  SignerAuditInfo({
+    required this.role,
+    required this.name,
+    this.email,
+    required this.method,
+    required this.signedAt,
+    this.ip,
+    this.otpVerifiedAt,
+  });
+}
+

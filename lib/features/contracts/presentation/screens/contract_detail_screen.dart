@@ -7,8 +7,17 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/contracts_repository.dart';
+import '../../../../data/repositories/documents_repository.dart';
+import '../../../documents/widgets/send_for_signature_dialog.dart';
 import '../../providers/contracts_providers.dart';
 import '../widgets/record_payment_dialog.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../../data/services/supabase_service.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../../../data/repositories/documents_repository.dart';
+import '../../../documents/widgets/send_for_signature_dialog.dart';
+
 
 class ContractDetailScreen extends ConsumerWidget {
   final String contractId;
@@ -33,20 +42,21 @@ class ContractDetailScreen extends ConsumerWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   final ContractDetail detail;
   final String contractId;
   const _Body({required this.detail, required this.contractId});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = detail.contract;
     final wide = MediaQuery.of(context).size.width >= 1000;
+    final progress = ref.watch(contractSignatureProgressProvider(c.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header
+        // ---- Header row ----
         Row(
           children: [
             IconButton(
@@ -78,10 +88,22 @@ class _Body extends StatelessWidget {
                 ],
               ),
             ),
+            // Sign / status button or chip
+            progress.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => _sendButton(context, detail),
+              data: (p) {
+                if (p != null && p.docStatus != 'draft') {
+                  return _SignatureStatusChip(progress: p, contractId: c.id);
+                }
+                return _sendButton(context, detail);
+              },
+            ),
           ],
         ),
         const SizedBox(height: 16),
 
+        // ---- Main body ----
         Expanded(
           child: wide
               ? Row(
@@ -107,6 +129,136 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _sendButton(BuildContext context, ContractDetail detail) {
+    return FilledButton.icon(
+      onPressed: () => showDialog(
+        context: context,
+        builder: (_) => SendForSignatureDialog(contractDetail: detail),
+      ),
+      icon: const Icon(Icons.draw, size: 14),
+      label: const Text('Send for signature'),
+    );
+  }
+}
+
+class _SignatureStatusChip extends ConsumerStatefulWidget {
+  final SignatureProgress progress;
+  final String contractId;
+  const _SignatureStatusChip(
+      {required this.progress, required this.contractId});
+
+  @override
+  ConsumerState<_SignatureStatusChip> createState() =>
+      _SignatureStatusChipState();
+}
+
+class _SignatureStatusChipState
+    extends ConsumerState<_SignatureStatusChip> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _downloadOrFinalize() async {
+    final profile = ref.read(currentProfileProvider).valueOrNull;
+    if (profile?.agencyId == null) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      // Find the latest document for this contract
+      final doc = await SupabaseService.client
+          .from('documents')
+          .select('id, signed_pdf_path, status')
+          .eq('contract_id', widget.contractId)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .single();
+
+      String? path = doc['signed_pdf_path'] as String?;
+      final docId = doc['id'] as String;
+
+      // If not yet finalized, generate now
+      if (path == null) {
+        path = await ref
+            .read(documentsRepoProvider)
+            .finalizeSignedDocument(
+          documentId: docId,
+          agencyId: profile!.agencyId!,
+        );
+        ref.invalidate(
+            contractSignatureProgressProvider(widget.contractId));
+      }
+
+      // Get a signed URL and open it
+      final url = await ref
+          .read(documentsRepoProvider)
+          .signedPdfUrl(path);
+      await launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication);
+    } catch (e) {
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.progress;
+    final signed = p.signers.where((s) => s.status == 'signed').length;
+    final total = p.signers.length;
+    final isDone = p.docStatus == 'fully_signed' ||
+        p.docStatus == 'completed';
+
+    if (isDone) {
+      return Tooltip(
+        message: _error ?? 'Download the signed agreement',
+        child: FilledButton.icon(
+          onPressed: _busy ? null : _downloadOrFinalize,
+          icon: _busy
+              ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.download, size: 14),
+          label: Text(_busy
+              ? 'Generating…'
+              : p.docStatus == 'completed'
+              ? 'Download signed agreement'
+              : 'Finalize & download'),
+        ),
+      );
+    }
+
+    // In-progress chip
+    final color = AppColors.warn;
+    final label = 'Signed $signed/$total';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color, width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.draw_outlined, size: 13, color: color),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w500)),
+        ],
+      ),
     );
   }
 }
