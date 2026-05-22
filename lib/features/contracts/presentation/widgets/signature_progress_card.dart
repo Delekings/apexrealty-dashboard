@@ -8,8 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../data/repositories/documents_repository.dart';
-import '../../../auth/providers/auth_providers.dart';
 import '../../../../data/services/supabase_service.dart';
+import '../../../auth/providers/auth_providers.dart';
 
 class SignatureProgressCard extends ConsumerStatefulWidget {
   final SignatureProgress progress;
@@ -87,6 +87,18 @@ class _SignatureProgressCardState
     );
   }
 
+  Future<void> _openAddWitnessDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          _AddWitnessDialog(documentId: widget.progress.documentId),
+    );
+    if (result == true) {
+      ref.invalidate(
+          contractSignatureProgressProvider(widget.contractId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.progress;
@@ -98,6 +110,7 @@ class _SignatureProgressCardState
 
     final isDone =
         p.docStatus == 'fully_signed' || p.docStatus == 'completed';
+    final awaitingWitness = p.docStatus == 'awaiting_witness_details';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -109,7 +122,7 @@ class _SignatureProgressCardState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // ----- Header -----
           Row(
             children: [
               const Icon(Icons.draw_outlined,
@@ -117,8 +130,7 @@ class _SignatureProgressCardState
               const SizedBox(width: 8),
               const Text('Signature progress',
                   style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
+                      fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -130,7 +142,9 @@ class _SignatureProgressCardState
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  isDone
+                  awaitingWitness
+                      ? 'Waiting on witness'
+                      : isDone
                       ? 'All signed'
                       : '$totalSigned / $total signed',
                   style: TextStyle(
@@ -161,6 +175,53 @@ class _SignatureProgressCardState
             ],
           ),
 
+          // ----- Awaiting-witness banner -----
+          if (awaitingWitness) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.goldLight,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.gold),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline,
+                      size: 16, color: AppColors.warn),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Waiting for buyer's witness details",
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          "The client signed without adding a witness. "
+                              "Add their witness's name and email to continue.",
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _openAddWitnessDialog,
+                    icon: const Icon(Icons.person_add, size: 14),
+                    label: const Text('Add witness'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // ----- Error banner -----
           if (_error != null) ...[
             const SizedBox(height: 8),
             Container(
@@ -177,7 +238,7 @@ class _SignatureProgressCardState
 
           const SizedBox(height: 16),
 
-          // Agency row first
+          // ----- Agency row first -----
           _SignerRow(
             order: 1,
             roleLabel: 'Vendor (Agency)',
@@ -191,7 +252,7 @@ class _SignatureProgressCardState
             missingDetails: false,
           ),
 
-          // Then each signer
+          // ----- Then each signer -----
           for (var i = 0; i < p.signers.length; i++)
             _SignerRow(
               order: i + 2,
@@ -312,9 +373,8 @@ class _SignerRow extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: isSigned
-                        ? AppColors.brand
-                        : AppColors.border,
+                    color:
+                    isSigned ? AppColors.brand : AppColors.border,
                     margin:
                     const EdgeInsets.symmetric(vertical: 4),
                   ),
@@ -450,6 +510,185 @@ class _SignerRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// Dialog to add buyer-witness details after the client signed
+// without providing them.
+// ============================================================
+class _AddWitnessDialog extends ConsumerStatefulWidget {
+  final String documentId;
+  const _AddWitnessDialog({required this.documentId});
+
+  @override
+  ConsumerState<_AddWitnessDialog> createState() =>
+      _AddWitnessDialogState();
+}
+
+class _AddWitnessDialogState extends ConsumerState<_AddWitnessDialog> {
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    super.dispose();
+  }
+
+  bool _isValidEmail(String s) {
+    final r = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+    return r.hasMatch(s);
+  }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    final email = _email.text.trim();
+
+    if (name.isEmpty || email.isEmpty) {
+      setState(() => _error = 'Both fields are required');
+      return;
+    }
+    if (!_isValidEmail(email)) {
+      setState(() => _error = 'Please enter a valid email address');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await SupabaseService.client.rpc(
+        'add_buyer_witness_details',
+        params: {
+          'p_document_id': widget.documentId,
+          'p_full_name': name,
+          'p_email': email,
+        },
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      setState(() =>
+      _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text("Add buyer's witness details",
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "The client signed without nominating a witness. "
+                    "Add the witness on the purchaser's side. They'll be "
+                    "notified by email after the vendor witness signs.",
+                style: TextStyle(
+                    fontSize: 12, color: AppColors.muted),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _name,
+                onChanged: (_) => setState(() => _error = null),
+                decoration: const InputDecoration(
+                  labelText: 'Full name',
+                  hintText: 'e.g. Adebola Kareem',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (_) => setState(() => _error = null),
+                decoration: const InputDecoration(
+                  labelText: 'Email address',
+                  hintText: 'witness@example.com',
+                  isDense: true,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.dangerLight,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 12, color: AppColors.danger),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(_error!,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.danger)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: _submitting ? null : _submit,
+                    icon: _submitting
+                        ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white))
+                        : const Icon(Icons.check, size: 14),
+                    label:
+                    Text(_submitting ? 'Saving…' : 'Save & notify'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

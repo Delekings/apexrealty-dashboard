@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import '../../../../core/theme/app_theme.dart';
 import '../../providers/auth_providers.dart';
@@ -26,11 +27,18 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _loading = false;
   String? _error;
 
+  // Set when sign-up succeeded but the user needs to confirm their email
+  // before being able to sign in. (i.e. "Confirm email" is ON in Supabase.)
+  bool _needsEmailConfirmation = false;
+  String? _confirmationEmail;
+
+  // Agency fields
   final _agencyName = TextEditingController();
   final _agencyPhone = TextEditingController();
   String? _agencyState;
   final _rcNumber = TextEditingController();
 
+  // Admin user fields
   final _fullName = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
@@ -50,6 +58,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     super.dispose();
   }
 
+  // ---------------- Validation ----------------
+
   bool get _step1Valid =>
       _agencyName.text.trim().isNotEmpty && _agencyState != null;
 
@@ -62,6 +72,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     if (_password.text != _confirm.text) return "Passwords don't match";
     return null;
   }
+
+  // ---------------- Submit ----------------
 
   Future<void> _submit() async {
     final err = _validateStep2();
@@ -76,7 +88,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     });
 
     try {
-      await ref.read(authRepositoryProvider).signUpAgencyAdmin(
+      final result = await ref.read(authRepositoryProvider).signUpAgencyAdmin(
         email: _email.text.trim(),
         password: _password.text,
         fullName: _fullName.text.trim(),
@@ -87,20 +99,51 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         agencyRcNumber: _rcNumber.text.trim(),
       );
 
-      if (mounted) {
+      if (!mounted) return;
+
+      if (!result.needsEmailConfirmation) {
+        // Signed in immediately — go to dashboard
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Welcome to Lintel, ${_fullName.text.trim()}!'),
             backgroundColor: AppColors.brand,
           ),
         );
+        context.go('/');
+      } else {
+        // Email confirmation required — show the "check your inbox" state
+        setState(() {
+          _needsEmailConfirmation = true;
+          _confirmationEmail = result.email;
+        });
       }
+    } on AuthException catch (e) {
+      setState(() => _error = _readableAuthError(e));
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  String _readableAuthError(AuthException e) {
+    final m = e.message.toLowerCase();
+    if (m.contains('already registered') ||
+        m.contains('already exists') ||
+        m.contains('user already')) {
+      return 'An account with this email already exists. '
+          'Try signing in instead.';
+    }
+    if (m.contains('rate limit')) {
+      return 'Too many attempts. Please wait a minute and try again.';
+    }
+    if (m.contains('invalid email')) {
+      return "That email address doesn't look valid.";
+    }
+    return e.message;
+  }
+
+  // ---------------- Build ----------------
 
   @override
   Widget build(BuildContext context) {
@@ -110,50 +153,114 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 440),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _logo(),
-                const SizedBox(height: 24),
-                Text(
-                  _step == 0
-                      ? 'Set up your agency'
-                      : 'Create your admin account',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _step == 0
-                      ? 'Tell us about your real estate company. You can change these later.'
-                      : "You'll be the admin for ${_agencyName.text.trim()}.",
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _stepperDots(),
-                const SizedBox(height: 24),
-                if (_step == 0) ..._step1Fields() else ..._step2Fields(),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  _errorBox(),
-                ],
-                const SizedBox(height: 20),
-                _actionButtons(),
-                const SizedBox(height: 16),
-                _signInLink(),
-              ],
-            ),
+            child: _needsEmailConfirmation
+                ? _confirmationContent()
+                : _signupContent(),
           ),
         ),
       ),
     );
   }
+
+  // ---------- "Check your email" state ----------
+
+  Widget _confirmationContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _logo(),
+        const SizedBox(height: 32),
+        Center(
+          child: Container(
+            width: 56,
+            height: 56,
+            decoration: const BoxDecoration(
+              color: AppColors.brandLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.mark_email_read_outlined,
+              color: AppColors.brand,
+              size: 28,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Center(
+          child: Text(
+            'Check your email',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "We sent a confirmation link to ${_confirmationEmail ?? "your email"}. "
+              "Click the link to activate your account, then sign in.",
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 13, color: AppColors.muted),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: () => context.go('/signin'),
+          child: const Text('Go to sign in'),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => setState(() {
+            _needsEmailConfirmation = false;
+          }),
+          child: const Text(
+            "Didn't receive the email? Try a different address",
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------- Form state ----------
+
+  Widget _signupContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _logo(),
+        const SizedBox(height: 24),
+        Text(
+          _step == 0 ? 'Set up your agency' : 'Create your admin account',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _step == 0
+              ? 'Tell us about your real estate company. You can change these later.'
+              : "You'll be the admin for ${_agencyName.text.trim()}.",
+          style: const TextStyle(
+            fontSize: 13,
+            color: AppColors.muted,
+          ),
+        ),
+        const SizedBox(height: 20),
+        _stepperDots(),
+        const SizedBox(height: 24),
+        if (_step == 0) ..._step1Fields() else ..._step2Fields(),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          _errorBox(),
+        ],
+        const SizedBox(height: 20),
+        _actionButtons(),
+        const SizedBox(height: 16),
+        _signInLink(),
+      ],
+    );
+  }
+
+  // ---------- Small pieces ----------
 
   Widget _logo() {
     return Row(
@@ -311,6 +418,8 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
       ],
     );
   }
+
+  // ---------- Field groups ----------
 
   List<Widget> _step1Fields() {
     return [

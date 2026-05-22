@@ -108,12 +108,15 @@ class SignResult {
   final String? nextSignerRole;
   final String? nextSignerEmail;
   final String? nextSignerToken;
+  final bool needsBuyerWitness;
+
   SignResult({
     required this.signerId,
     required this.documentId,
     this.nextSignerRole,
     this.nextSignerEmail,
     this.nextSignerToken,
+    this.needsBuyerWitness = false,
   });
   factory SignResult.fromMap(Map<String, dynamic> m) => SignResult(
     signerId: m['out_signer_id'] as String,
