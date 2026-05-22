@@ -2,22 +2,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/contracts_repository.dart';
 import '../../../../data/repositories/documents_repository.dart';
+import '../../../../data/services/supabase_service.dart';
+import '../../../auth/providers/auth_providers.dart';
 import '../../../documents/widgets/send_for_signature_dialog.dart';
 import '../../providers/contracts_providers.dart';
 import '../widgets/record_payment_dialog.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import '../../../../data/services/supabase_service.dart';
-import '../../../auth/providers/auth_providers.dart';
-import '../../../../data/repositories/documents_repository.dart';
-import '../../../documents/widgets/send_for_signature_dialog.dart';
-
+import '../widgets/signature_progress_card.dart';
 
 class ContractDetailScreen extends ConsumerWidget {
   final String contractId;
@@ -51,7 +48,8 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = detail.contract;
     final wide = MediaQuery.of(context).size.width >= 1000;
-    final progress = ref.watch(contractSignatureProgressProvider(c.id));
+    final asyncProgress =
+    ref.watch(contractSignatureProgressProvider(c.id));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,20 +86,40 @@ class _Body extends ConsumerWidget {
                 ],
               ),
             ),
-            // Sign / status button or chip
-            progress.when(
+            // Send button only when there's no document yet.
+            // Once a document exists, the SignatureProgressCard below
+            // handles the action (download / finalize).
+            asyncProgress.when(
               loading: () => const SizedBox.shrink(),
               error: (_, __) => _sendButton(context, detail),
               data: (p) {
-                if (p != null && p.docStatus != 'draft') {
-                  return _SignatureStatusChip(progress: p, contractId: c.id);
+                if (p == null || p.docStatus == 'draft') {
+                  return _sendButton(context, detail);
                 }
-                return _sendButton(context, detail);
+                return const SizedBox.shrink();
               },
             ),
           ],
         ),
         const SizedBox(height: 16),
+
+        // ---- Signature progress panel (only when a document exists) ----
+        asyncProgress.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (p) {
+            if (p == null || p.docStatus == 'draft') {
+              return const SizedBox.shrink();
+            }
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: SignatureProgressCard(
+                progress: p,
+                contractId: c.id,
+              ),
+            );
+          },
+        ),
 
         // ---- Main body ----
         Expanded(
@@ -110,9 +128,10 @@ class _Body extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                  flex: 2,
-                  child: _LeftColumn(
-                      detail: detail, contractId: contractId)),
+                flex: 2,
+                child: _LeftColumn(
+                    detail: detail, contractId: contractId),
+              ),
               const SizedBox(width: 16),
               Expanded(child: _RightColumn(detail: detail)),
             ],
@@ -144,125 +163,6 @@ class _Body extends ConsumerWidget {
   }
 }
 
-class _SignatureStatusChip extends ConsumerStatefulWidget {
-  final SignatureProgress progress;
-  final String contractId;
-  const _SignatureStatusChip(
-      {required this.progress, required this.contractId});
-
-  @override
-  ConsumerState<_SignatureStatusChip> createState() =>
-      _SignatureStatusChipState();
-}
-
-class _SignatureStatusChipState
-    extends ConsumerState<_SignatureStatusChip> {
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _downloadOrFinalize() async {
-    final profile = ref.read(currentProfileProvider).valueOrNull;
-    if (profile?.agencyId == null) return;
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      // Find the latest document for this contract
-      final doc = await SupabaseService.client
-          .from('documents')
-          .select('id, signed_pdf_path, status')
-          .eq('contract_id', widget.contractId)
-          .order('created_at', ascending: false)
-          .limit(1)
-          .single();
-
-      String? path = doc['signed_pdf_path'] as String?;
-      final docId = doc['id'] as String;
-
-      // If not yet finalized, generate now
-      if (path == null) {
-        path = await ref
-            .read(documentsRepoProvider)
-            .finalizeSignedDocument(
-          documentId: docId,
-          agencyId: profile!.agencyId!,
-        );
-        ref.invalidate(
-            contractSignatureProgressProvider(widget.contractId));
-      }
-
-      // Get a signed URL and open it
-      final url = await ref
-          .read(documentsRepoProvider)
-          .signedPdfUrl(path);
-      await launchUrl(Uri.parse(url),
-          mode: LaunchMode.externalApplication);
-    } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = widget.progress;
-    final signed = p.signers.where((s) => s.status == 'signed').length;
-    final total = p.signers.length;
-    final isDone = p.docStatus == 'fully_signed' ||
-        p.docStatus == 'completed';
-
-    if (isDone) {
-      return Tooltip(
-        message: _error ?? 'Download the signed agreement',
-        child: FilledButton.icon(
-          onPressed: _busy ? null : _downloadOrFinalize,
-          icon: _busy
-              ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.download, size: 14),
-          label: Text(_busy
-              ? 'Generating…'
-              : p.docStatus == 'completed'
-              ? 'Download signed agreement'
-              : 'Finalize & download'),
-        ),
-      );
-    }
-
-    // In-progress chip
-    final color = AppColors.warn;
-    final label = 'Signed $signed/$total';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color, width: 0.8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.draw_outlined, size: 13, color: color),
-          const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
 class _LeftColumn extends StatelessWidget {
   final ContractDetail detail;
   final String contractId;
@@ -270,31 +170,34 @@ class _LeftColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _ProgressCard(detail: detail),
-        const SizedBox(height: 12),
-        _InstallmentScheduleCard(
-            detail: detail, contractId: contractId),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ProgressCard(detail: detail),
+          const SizedBox(height: 12),
+          _InstallmentScheduleCard(
+              detail: detail, contractId: contractId),
+        ],
+      ),
     );
   }
 }
-
 class _RightColumn extends StatelessWidget {
   final ContractDetail detail;
   const _RightColumn({required this.detail});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SummaryCard(detail: detail),
-        const SizedBox(height: 12),
-        _PaymentHistoryCard(payments: detail.payments),
-      ],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SummaryCard(detail: detail),
+          const SizedBox(height: 12),
+          _PaymentHistoryCard(payments: detail.payments),
+        ],
+      ),
     );
   }
 }
@@ -645,12 +548,12 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class _PaymentHistoryCard extends StatelessWidget {
+class _PaymentHistoryCard extends ConsumerWidget {
   final List<PaymentRecord> payments;
   const _PaymentHistoryCard({required this.payments});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -669,14 +572,48 @@ class _PaymentHistoryCard extends StatelessWidget {
                         fontSize: 12, color: AppColors.muted)),
               )
             else
-              for (final p in payments) _paymentRow(p),
+              for (final p in payments) _PaymentRow(payment: p),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _paymentRow(PaymentRecord p) {
+class _PaymentRow extends ConsumerStatefulWidget {
+  final PaymentRecord payment;
+  const _PaymentRow({required this.payment});
+
+  @override
+  ConsumerState<_PaymentRow> createState() => _PaymentRowState();
+}
+
+class _PaymentRowState extends ConsumerState<_PaymentRow> {
+  bool _busy = false;
+
+  Future<void> _downloadReceipt() async {
+    final path = widget.payment.receiptPdfPath;
+    if (path == null || path.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final url = await ref
+          .read(contractsRepoProvider)
+          .receiptUrl(path);
+      await launchUrl(Uri.parse(url),
+          mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // ignore — UI shows nothing if it fails
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.payment;
+    final hasReceipt =
+        p.receiptPdfPath != null && p.receiptPdfPath!.isNotEmpty;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -693,9 +630,33 @@ class _PaymentHistoryCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(Formatters.naira(p.amount),
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w500)),
+                Row(
+                  children: [
+                    Text(Formatters.naira(p.amount),
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500)),
+                    if (p.receiptNo != null) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.bg,
+                          borderRadius: BorderRadius.circular(3),
+                          border: Border.all(
+                              color: AppColors.border, width: 0.5),
+                        ),
+                        child: Text(p.receiptNo!,
+                            style: const TextStyle(
+                                fontSize: 9,
+                                color: AppColors.muted,
+                                fontFamily: 'monospace')),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
                 Text(
                   '${paymentChannelLabel(p.channel)} · ${Formatters.relative(p.paidAt)}'
                       '${p.reference != null ? " · Ref ${p.reference}" : ""}',
@@ -706,8 +667,26 @@ class _PaymentHistoryCard extends StatelessWidget {
             ),
           ),
           if (p.receiptUrl != null)
-            const Icon(Icons.attach_file,
-                size: 14, color: AppColors.muted),
+            const Padding(
+              padding: EdgeInsets.only(right: 4),
+              child: Icon(Icons.attach_file,
+                  size: 14, color: AppColors.muted),
+            ),
+          if (hasReceipt)
+            IconButton(
+              icon: _busy
+                  ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.brand))
+                  : const Icon(Icons.receipt_long, size: 16),
+              tooltip: 'Download receipt',
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(4),
+              visualDensity: VisualDensity.compact,
+              onPressed: _busy ? null : _downloadReceipt,
+            ),
         ],
       ),
     );

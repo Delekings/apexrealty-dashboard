@@ -1,71 +1,96 @@
 // lib/data/repositories/documents_repository.dart
+
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/supabase_service.dart';
-import 'dart:typed_data';
 import '../../features/documents/services/sale_agreement_pdf.dart';
+
+class SignerInfo {
+  final String id;
+  final String signerRole;       // client | vendor_witness | buyer_witness
+  final int signerOrder;
+  final String? fullName;
+  final String? email;
+  final String status;           // pending | awaiting_signer | otp_verified | signed
+  final DateTime? notifiedAt;
+  final DateTime? openedAt;
+  final DateTime? signedAt;
+  final String? signatureMethod;
+  final String? signingToken;
+  final DateTime? tokenExpiresAt;
+
+  SignerInfo({
+    required this.id,
+    required this.signerRole,
+    required this.signerOrder,
+    this.fullName,
+    this.email,
+    required this.status,
+    this.notifiedAt,
+    this.openedAt,
+    this.signedAt,
+    this.signatureMethod,
+    this.signingToken,
+    this.tokenExpiresAt,
+  });
+
+  factory SignerInfo.fromMap(Map<String, dynamic> m) => SignerInfo(
+    id: m['id'] as String,
+    signerRole: m['signer_role'] as String,
+    signerOrder: m['signer_order'] as int,
+    fullName: m['full_name'] as String?,
+    email: m['email'] as String?,
+    status: m['status'] as String,
+    notifiedAt: m['notified_at'] != null
+        ? DateTime.parse(m['notified_at'] as String)
+        : null,
+    openedAt: m['opened_at'] != null
+        ? DateTime.parse(m['opened_at'] as String)
+        : null,
+    signedAt: m['signed_at'] != null
+        ? DateTime.parse(m['signed_at'] as String)
+        : null,
+    signatureMethod: m['signature_method'] as String?,
+    signingToken: m['signing_token'] as String?,
+    tokenExpiresAt: m['token_expires_at'] != null
+        ? DateTime.parse(m['token_expires_at'] as String)
+        : null,
+  );
+
+  String get roleLabel => switch (signerRole) {
+    'client' => 'Purchaser',
+    'vendor_witness' => "Vendor's witness",
+    'buyer_witness' => "Buyer's witness",
+    _ => signerRole,
+  };
+
+  bool get isSigned => status == 'signed';
+  bool get isCurrentlyWaiting =>
+      status == 'awaiting_signer' || status == 'otp_verified';
+  bool get isMissingDetails =>
+      (fullName == null || fullName!.isEmpty) ||
+          (email == null || email!.isEmpty);
+}
 
 class SignatureProgress {
   final String documentId;
   final String docStatus;
+  final DateTime? agencySignedAt;
+  final String? agencySignerName;
+  final DateTime? expiresAt;
   final List<SignerInfo> signers;
-  SignatureProgress(
-      {required this.documentId,
-        required this.docStatus,
-        required this.signers});
 
-  factory SignatureProgress.fromMap(Map<String, dynamic> m) {
-    return SignatureProgress(
-      documentId: m['document_id'] as String,
-      docStatus: m['doc_status'] as String,
-      signers: (m['signers'] as List)
-          .map((s) => SignerInfo.fromMap(s as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-}
-
-class SignerInfo {
-  final String role;
-  final int order;
-  final String? fullName;
-  final String? email;
-  final String status;
-  final DateTime? signedAt;
-  final DateTime? notifiedAt;
-  SignerInfo({
-    required this.role,
-    required this.order,
-    this.fullName,
-    this.email,
-    required this.status,
-    this.signedAt,
-    this.notifiedAt,
+  SignatureProgress({
+    required this.documentId,
+    required this.docStatus,
+    this.agencySignedAt,
+    this.agencySignerName,
+    this.expiresAt,
+    required this.signers,
   });
-
-  factory SignerInfo.fromMap(Map<String, dynamic> m) => SignerInfo(
-    role: m['role'] as String,
-    order: m['order'] as int,
-    fullName: m['full_name'] as String?,
-    email: m['email'] as String?,
-    status: m['status'] as String,
-    signedAt: m['signed_at'] != null
-        ? DateTime.parse(m['signed_at'] as String)
-        : null,
-    notifiedAt: m['notified_at'] != null
-        ? DateTime.parse(m['notified_at'] as String)
-        : null,
-  );
-
-  String get roleLabel => switch (role) {
-    'client' => 'Client',
-    'vendor_witness' => "Vendor's witness",
-    'buyer_witness' => "Buyer's witness",
-    _ => role,
-  };
 }
 
 class SendForSignatureResult {
@@ -81,6 +106,110 @@ class SendForSignatureResult {
 
 class DocumentsRepository {
   final SupabaseClient _c = SupabaseService.client;
+
+  /// Uploads the unsigned PDF to storage. Returns the storage path.
+  Future<String> uploadUnsignedPdf({
+    required String agencyId,
+    required Uint8List pdfBytes,
+  }) async {
+    final filename =
+        'unsigned_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final path = '$agencyId/$filename';
+    await _c.storage.from('unsigned-documents').uploadBinary(
+      path,
+      pdfBytes,
+      fileOptions: const FileOptions(
+        contentType: 'application/pdf',
+        upsert: false,
+      ),
+    );
+    return path;
+  }
+
+  /// Calls the RPC to create the document + signers + tokens.
+  Future<SendForSignatureResult> createSignatureRequest({
+    required String contractId,
+    required String agencySignatureId,
+    required String unsignedPdfPath,
+    required String vendorWitnessName,
+    required String vendorWitnessEmail,
+    String? buyerWitnessName,
+    String? buyerWitnessEmail,
+    int expiresInDays = 14,
+  }) async {
+    final res = await _c.rpc('create_signature_request', params: {
+      'p_contract_id': contractId,
+      'p_agency_signature_id': agencySignatureId,
+      'p_unsigned_pdf_path': unsignedPdfPath,
+      'p_vendor_witness_name': vendorWitnessName,
+      'p_vendor_witness_email': vendorWitnessEmail,
+      'p_buyer_witness_name': buyerWitnessName,
+      'p_buyer_witness_email': buyerWitnessEmail,
+      'p_expires_in_days': expiresInDays,
+    });
+
+    if (res is List && res.isNotEmpty) {
+      final r = res.first as Map<String, dynamic>;
+      return SendForSignatureResult(
+        documentId: r['document_id'] as String,
+        clientSigningToken: r['client_signing_token'] as String,
+        clientEmail: r['client_email'] as String,
+      );
+    }
+    throw Exception('Could not send for signature');
+  }
+
+  /// Fetches signature progress for a contract — the latest document
+  /// and all its signers in order.
+  Future<SignatureProgress?> progressForContract(String contractId) async {
+    // Find the latest document for this contract
+    final docRows = await _c
+        .from('documents')
+        .select(
+        'id, status, agency_signed_at, agency_signature_id, expires_at')
+        .eq('contract_id', contractId)
+        .order('created_at', ascending: false)
+        .limit(1);
+
+    if (docRows is! List || docRows.isEmpty) return null;
+    final doc = docRows.first as Map<String, dynamic>;
+
+    // Look up agency signer name (if present)
+    String? agencySignerName;
+    if (doc['agency_signature_id'] != null) {
+      final sig = await _c
+          .from('agency_signatures')
+          .select('signer_name')
+          .eq('id', doc['agency_signature_id'])
+          .maybeSingle();
+      agencySignerName = sig?['signer_name'] as String?;
+    }
+
+    // Pull all signers in signer_order
+    final signerRows = await _c
+        .from('document_signers')
+        .select()
+        .eq('document_id', doc['id'])
+        .order('signer_order');
+
+    final signers = (signerRows as List)
+        .map((s) => SignerInfo.fromMap(s as Map<String, dynamic>))
+        .toList();
+
+    return SignatureProgress(
+      documentId: doc['id'] as String,
+      docStatus: doc['status'] as String,
+      agencySignedAt: doc['agency_signed_at'] != null
+          ? DateTime.parse(doc['agency_signed_at'] as String)
+          : null,
+      agencySignerName: agencySignerName,
+      expiresAt: doc['expires_at'] != null
+          ? DateTime.parse(doc['expires_at'] as String)
+          : null,
+      signers: signers,
+    );
+  }
+
   /// Generates the final signed PDF (with all signatures embedded
   /// and an audit page) for a fully-signed document. Returns the
   /// storage path of the new signed PDF.
@@ -88,11 +217,11 @@ class DocumentsRepository {
     required String documentId,
     required String agencyId,
   }) async {
-    // 1. Fetch the document + all its signers in their signed state
+    // 1. Fetch the document
     final doc = await _c.from('documents').select('''
-        id, status, contract_id, agency_signature_id,
-        agency_signed_at, current_pdf_path
-      ''').eq('id', documentId).single();
+          id, status, contract_id, agency_signature_id,
+          agency_signed_at, current_pdf_path
+        ''').eq('id', documentId).single();
 
     if (doc['status'] != 'fully_signed' && doc['status'] != 'completed') {
       throw Exception(
@@ -105,13 +234,13 @@ class DocumentsRepository {
         .eq('document_id', documentId)
         .order('signer_order');
 
-    // 2. Fetch contract + client + property + agency for the input class
+    // 2. Fetch contract + client + property + agency
     final contract = await _c.from('contracts').select('''
-        *,
-        client:clients(id, full_name, phone, email, address),
-        property:properties(id, title, location, state, lga, size_sqm),
-        agency:agencies(id, name, rc_number, address, logo_url)
-      ''').eq('id', doc['contract_id']).single();
+          *,
+          client:clients(id, full_name, phone, email, address),
+          property:properties(id, title, location, state, lga, size_sqm),
+          agency:agencies(id, name, rc_number, address, logo_url)
+        ''').eq('id', doc['contract_id']).single();
 
     // 3. Fetch the agency signature
     final agencySig = await _c
@@ -151,7 +280,6 @@ class DocumentsRepository {
 
     // 5. Build the audit list
     final auditEntries = <SignerAuditInfo>[
-      // Agency
       SignerAuditInfo(
         role: 'Vendor (Agency)',
         name: agencySig['signer_name'] as String,
@@ -177,14 +305,13 @@ class DocumentsRepository {
     }
 
     // 6. Find witness rows for the PDF input
-    final clientRow =
-    signers.firstWhere((s) => s['signer_role'] == 'client')
+    final clientRow = signers
+        .firstWhere((s) => s['signer_role'] == 'client') as Map<String, dynamic>;
+    final vendorWitnessRow = signers
+        .firstWhere((s) => s['signer_role'] == 'vendor_witness')
     as Map<String, dynamic>;
-    final vendorWitnessRow =
-    signers.firstWhere((s) => s['signer_role'] == 'vendor_witness')
-    as Map<String, dynamic>;
-    final buyerWitnessRow =
-    signers.firstWhere((s) => s['signer_role'] == 'buyer_witness')
+    final buyerWitnessRow = signers
+        .firstWhere((s) => s['signer_role'] == 'buyer_witness')
     as Map<String, dynamic>;
 
     // 7. Build the input for the PDF
@@ -217,27 +344,22 @@ class DocumentsRepository {
       planMonths: contract['plan_months'] as int?,
       startDate: DateTime.parse(contract['start_date'] as String),
       agreementDate: DateTime.parse(doc['agency_signed_at'] as String),
-
       vendorWitnessName: vendorWitnessRow['full_name'] as String? ?? '',
       vendorWitnessOccupation: vendorWitnessRow['occupation'] as String?,
       vendorWitnessAddress: vendorWitnessRow['address'] as String?,
       vendorWitnessSignatureImage: vendorWitnessBytes,
-      vendorWitnessSignedAtDisplay:
-      vendorWitnessRow['signed_at'] != null
-          ? _formatDate(DateTime.parse(
-          vendorWitnessRow['signed_at'] as String))
+      vendorWitnessSignedAtDisplay: vendorWitnessRow['signed_at'] != null
+          ? _formatDate(
+          DateTime.parse(vendorWitnessRow['signed_at'] as String))
           : null,
-
       buyerWitnessName: buyerWitnessRow['full_name'] as String?,
       buyerWitnessOccupation: buyerWitnessRow['occupation'] as String?,
       buyerWitnessAddress: buyerWitnessRow['address'] as String?,
       buyerWitnessSignatureImage: buyerWitnessBytes,
-      buyerWitnessSignedAtDisplay:
-      buyerWitnessRow['signed_at'] != null
-          ? _formatDate(DateTime.parse(
-          buyerWitnessRow['signed_at'] as String))
+      buyerWitnessSignedAtDisplay: buyerWitnessRow['signed_at'] != null
+          ? _formatDate(
+          DateTime.parse(buyerWitnessRow['signed_at'] as String))
           : null,
-
       clientSignatureImage: clientBytes,
       clientSignedAtDisplay: clientRow['signed_at'] != null
           ? _formatDate(DateTime.parse(clientRow['signed_at'] as String))
@@ -297,76 +419,20 @@ class DocumentsRepository {
 
   String _formatDate(DateTime d) {
     const months = [
-      'Jan','Feb','Mar','Apr','May','Jun',
-      'Jul','Aug','Sep','Oct','Nov','Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
-  }
-
-  /// Uploads the unsigned PDF to storage. Returns the storage path.
-  Future<String> uploadUnsignedPdf({
-    required String agencyId,
-    required Uint8List pdfBytes,
-  }) async {
-    final filename =
-        'unsigned_${DateTime.now().millisecondsSinceEpoch}.pdf';
-    final path = '$agencyId/$filename';
-    await _c.storage.from('unsigned-documents').uploadBinary(
-      path,
-      pdfBytes,
-      fileOptions: const FileOptions(
-        contentType: 'application/pdf',
-        upsert: false,
-      ),
-    );
-    return path;
-  }
-
-
-
-  /// Calls the RPC to create the document + signers + tokens.
-  Future<SendForSignatureResult> createSignatureRequest({
-    required String contractId,
-    required String agencySignatureId,
-    required String unsignedPdfPath,
-    required String vendorWitnessName,
-    required String vendorWitnessEmail,
-    String? buyerWitnessName,
-    String? buyerWitnessEmail,
-    int expiresInDays = 14,
-  }) async {
-    final res = await _c.rpc('create_signature_request', params: {
-      'p_contract_id': contractId,
-      'p_agency_signature_id': agencySignatureId,
-      'p_unsigned_pdf_path': unsignedPdfPath,
-      'p_vendor_witness_name': vendorWitnessName,
-      'p_vendor_witness_email': vendorWitnessEmail,
-      'p_buyer_witness_name': buyerWitnessName,
-      'p_buyer_witness_email': buyerWitnessEmail,
-      'p_expires_in_days': expiresInDays,
-    });
-
-    if (res is List && res.isNotEmpty) {
-      final r = res.first as Map<String, dynamic>;
-      return SendForSignatureResult(
-        documentId: r['document_id'] as String,
-        clientSigningToken: r['client_signing_token'] as String,
-        clientEmail: r['client_email'] as String,
-      );
-    }
-    throw Exception('Could not send for signature');
-  }
-
-  /// Fetches signature progress for a contract.
-  Future<SignatureProgress?> progressForContract(String contractId) async {
-    final rows = await _c
-        .from('v_document_signature_progress')
-        .select()
-        .eq('contract_id', contractId)
-        .order('document_id', ascending: false)
-        .limit(1);
-    if ((rows as List).isEmpty) return null;
-    return SignatureProgress.fromMap(rows.first as Map<String, dynamic>);
   }
 }
 

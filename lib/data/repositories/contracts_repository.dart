@@ -6,10 +6,129 @@ import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
+import '../../features/documents/services/payment_receipt_pdf.dart';
+
+class GeneratedReceipt {
+  final String path;
+  final String receiptNo;
+  GeneratedReceipt({required this.path, required this.receiptNo});
+}
 
 class ContractsRepository {
   final SupabaseClient _c = SupabaseService.client;
   static const _uuid = Uuid();
+
+  Future<GeneratedReceipt> generateAndUploadReceipt({
+    required String paymentId,
+    required String agencyId,
+  }) async {
+    // 1. Fetch payment with all related data
+    // 1. Fetch payment with all related data
+    final payment = await _c.from('payments').select('''
+    *,
+    contract:contracts(
+      id, contract_no, total_price_ngn,
+      property:properties(title),
+      client:clients(full_name, phone, email, address)
+    ),
+    installment:installments(sequence)
+  ''').eq('id', paymentId).single();
+
+// Count total installments for this contract (for the label)
+    final allInstallments = await _c
+        .from('installments')
+        .select('id')
+        .eq('contract_id', payment['contract_id']);
+    final totalInstallments = (allInstallments as List).length;
+
+    // 2. Total paid to date for this contract
+    final paid = await _c
+        .from('payments')
+        .select('amount_ngn')
+        .eq('contract_id', payment['contract_id']);
+    final totalPaid = (paid as List).fold<num>(
+        0, (sum, p) => sum + (p['amount_ngn'] as num));
+
+    // 3. Agency info
+    final agency = await _c
+        .from('agencies')
+        .select('name, rc_number, address')
+        .eq('id', agencyId)
+        .single();
+
+    // 4. Profile of the actor (the one recording the payment)
+    final profile = await _c
+        .from('profiles')
+        .select('full_name, title')
+        .eq('id', SupabaseService.client.auth.currentUser!.id)
+        .single();
+
+    // 5. Build inputs
+    final contract = payment['contract'] as Map<String, dynamic>;
+    final property = contract['property'] as Map<String, dynamic>;
+    final client = contract['client'] as Map<String, dynamic>;
+    final installment = payment['installment'] as Map<String, dynamic>?;
+
+    String? installmentLabel;
+    if (installment != null) {
+      installmentLabel =
+      'Installment ${installment['sequence']} of $totalInstallments';
+    }
+
+    final receiptNo = payment['receipt_no'] as String;
+
+    final input = PaymentReceiptInput(
+      agencyName: agency['name'] as String,
+      agencyRcNumber: agency['rc_number'] as String?,
+      agencyAddress: agency['address'] as String?,
+      receiptNo: receiptNo,
+      issuedOn: DateTime.parse(payment['created_at'] as String),
+      clientFullName: client['full_name'] as String,
+      clientPhone: client['phone'] as String?,
+      clientEmail: client['email'] as String?,
+      clientAddress: client['address'] as String?,
+      amountNgn: payment['amount_ngn'] as num,
+      channel: payment['channel'] as String,
+      reference: payment['reference'] as String?,
+      notes: payment['notes'] as String?,
+      contractNo: contract['contract_no'] as String,
+      propertyTitle: property['title'] as String,
+      installmentLabel: installmentLabel,
+      totalContractPriceNgn: contract['total_price_ngn'] as num,
+      totalPaidToDateNgn: totalPaid,
+      agencyRepName: profile['full_name'] as String,
+      agencyRepTitle: profile['title'] as String?,
+    );
+
+    // 6. Generate PDF
+    final pdfBytes = await PaymentReceiptPdf.build(input);
+
+    // 7. Upload to storage
+    final filename =
+        '${receiptNo}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final path = '$agencyId/$filename';
+    await _c.storage.from('payment-receipts').uploadBinary(
+      path,
+      pdfBytes,
+      fileOptions: const FileOptions(
+        contentType: 'application/pdf',
+        upsert: true,
+      ),
+    );
+
+    // 8. Save the path on the payment row
+    await _c
+        .from('payments')
+        .update({'receipt_pdf_path': path}).eq('id', paymentId);
+
+    return GeneratedReceipt(path: path, receiptNo: receiptNo);
+  }
+
+  Future<String> receiptUrl(String storagePath) async {
+    return await _c.storage
+        .from('payment-receipts')
+        .createSignedUrl(storagePath, 3600);
+  }
 
   /// Create a contract + generate installment schedule + reserve a unit,
   /// all atomically via an RPC. Returns the new contract id.
@@ -77,7 +196,8 @@ class ContractsRepository {
       propertyState: (c['property'] as Map?)?['state'] as String? ?? '',
       propertyLga: (c['property'] as Map?)?['lga'] as String?,
       propertySizeSqm: (c['property'] as Map?)?['size_sqm'] as num?,
-      propertyCoverUrl: (c['property'] as Map?)?['cover_image_url'] as String?,
+      propertyCoverUrl:
+      (c['property'] as Map?)?['cover_image_url'] as String?,
 
       // Agent
       agentName: (c['agent'] as Map?)?['full_name'] as String?,
@@ -248,15 +368,16 @@ class ContractListItem {
     this.propertyTitle,
   });
 
-  factory ContractListItem.fromMap(Map<String, dynamic> m) => ContractListItem(
-    id: m['id'] as String,
-    contractNo: m['contract_no'] as String,
-    clientName: (m['client'] as Map?)?['full_name'] as String?,
-    propertyTitle: (m['property'] as Map?)?['title'] as String?,
-    totalPrice: m['total_price_ngn'] as num,
-    status: contractStatusFromDb(m['status'] as String),
-    createdAt: DateTime.parse(m['created_at'] as String),
-  );
+  factory ContractListItem.fromMap(Map<String, dynamic> m) =>
+      ContractListItem(
+        id: m['id'] as String,
+        contractNo: m['contract_no'] as String,
+        clientName: (m['client'] as Map?)?['full_name'] as String?,
+        propertyTitle: (m['property'] as Map?)?['title'] as String?,
+        totalPrice: m['total_price_ngn'] as num,
+        status: contractStatusFromDb(m['status'] as String),
+        createdAt: DateTime.parse(m['created_at'] as String),
+      );
 }
 
 class PaymentRecord {
@@ -268,6 +389,8 @@ class PaymentRecord {
   final DateTime paidAt;
   final String? receiptUrl;
   final String? notes;
+  final String? receiptNo;
+  final String? receiptPdfPath;
 
   PaymentRecord({
     required this.id,
@@ -278,6 +401,8 @@ class PaymentRecord {
     this.reference,
     this.receiptUrl,
     this.notes,
+    this.receiptNo,
+    this.receiptPdfPath,
   });
 
   factory PaymentRecord.fromMap(Map<String, dynamic> m) => PaymentRecord(
@@ -289,6 +414,8 @@ class PaymentRecord {
     paidAt: DateTime.parse(m['paid_at'] as String),
     receiptUrl: m['receipt_url'] as String?,
     notes: m['notes'] as String?,
+    receiptNo: m['receipt_no'] as String?,
+    receiptPdfPath: m['receipt_pdf_path'] as String?,
   );
 
   static PaymentChannel _channelFromDb(String s) => switch (s) {
