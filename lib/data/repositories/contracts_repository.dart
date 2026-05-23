@@ -18,11 +18,14 @@ class ContractsRepository {
   final SupabaseClient _c = SupabaseService.client;
   static const _uuid = Uuid();
 
+  // ============================================================
+  // Receipts
+  // ============================================================
+
   Future<GeneratedReceipt> generateAndUploadReceipt({
     required String paymentId,
     required String agencyId,
   }) async {
-    // 1. Fetch payment with all related data
     // 1. Fetch payment with all related data
     final payment = await _c.from('payments').select('''
     *,
@@ -34,7 +37,7 @@ class ContractsRepository {
     installment:installments(sequence)
   ''').eq('id', paymentId).single();
 
-// Count total installments for this contract (for the label)
+    // Count total installments for this contract (for the label)
     final allInstallments = await _c
         .from('installments')
         .select('id')
@@ -130,11 +133,19 @@ class ContractsRepository {
         .createSignedUrl(storagePath, 3600);
   }
 
+  // ============================================================
+  // Contracts
+  // ============================================================
+
   /// Create a contract + generate installment schedule + reserve a unit,
   /// all atomically via an RPC. Returns the new contract id.
+  ///
+  /// [propertyUnitTypeId] is required — every contract must point to a
+  /// specific unit type so we can decrement that type's availability.
   Future<String> create({
     required String clientId,
     required String propertyId,
+    required String propertyUnitTypeId,
     String? unitLabel,
     String? agentId,
     required num totalPrice,
@@ -147,6 +158,7 @@ class ContractsRepository {
     final res = await _c.rpc('create_contract_with_schedule', params: {
       'p_client_id': clientId,
       'p_property_id': propertyId,
+      'p_property_unit_type_id': propertyUnitTypeId,
       'p_unit_label': unitLabel,
       'p_agent_id': agentId,
       'p_total_price': totalPrice,
@@ -165,6 +177,7 @@ class ContractsRepository {
           *,
           client:clients(id, full_name, phone, email, address),
           property:properties(id, title, location, state, lga, size_sqm, cover_image_url),
+          unit_type:property_unit_types(id, title, size_sqm, base_price_ngn),
           agent:profiles!agent_id(id, full_name),
           agency:agencies(id, name, rc_number, address)
         ''').eq('id', id).single();
@@ -199,6 +212,10 @@ class ContractsRepository {
       propertyCoverUrl:
       (c['property'] as Map?)?['cover_image_url'] as String?,
 
+      // Unit type
+      unitTypeTitle: (c['unit_type'] as Map?)?['title'] as String?,
+      unitTypeSizeSqm: (c['unit_type'] as Map?)?['size_sqm'] as num?,
+
       // Agent
       agentName: (c['agent'] as Map?)?['full_name'] as String?,
 
@@ -228,6 +245,10 @@ class ContractsRepository {
         .map((r) => ContractListItem.fromMap(r as Map<String, dynamic>))
         .toList();
   }
+
+  // ============================================================
+  // Payments
+  // ============================================================
 
   /// Record a manual payment via the SQL function.
   Future<String> recordManualPayment({
@@ -288,7 +309,9 @@ class ContractsRepository {
   };
 }
 
-// --- Auxiliary types ---
+// ============================================================
+// Auxiliary types
+// ============================================================
 
 class ContractDetail {
   final Contract contract;
@@ -306,6 +329,10 @@ class ContractDetail {
   final String? propertyLga;
   final num? propertySizeSqm;
   final String? propertyCoverUrl;
+
+  // Unit type (multi-unit inventory)
+  final String? unitTypeTitle;
+  final num? unitTypeSizeSqm;
 
   // Agent
   final String? agentName;
@@ -332,6 +359,8 @@ class ContractDetail {
     this.propertyLga,
     this.propertySizeSqm,
     this.propertyCoverUrl,
+    this.unitTypeTitle,
+    this.unitTypeSizeSqm,
     this.agentName,
     this.agencyName,
     this.agencyRcNumber,

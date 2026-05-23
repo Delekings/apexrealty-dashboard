@@ -10,6 +10,10 @@ import '../services/supabase_service.dart';
 class PropertiesRepository {
   final SupabaseClient _c = SupabaseService.client;
 
+  // ============================================================
+  // Listing & lookup
+  // ============================================================
+
   /// Paginated list with optional search and status filter.
   Future<PropertiesPage> list({
     String? search,
@@ -67,8 +71,177 @@ class PropertiesRepository {
     return Property.fromMap(row);
   }
 
-  /// Create a new property. Returns the new id.
-  /// agency_id is required (we pass from the caller).
+  // ============================================================
+  // Unit types (multi-unit inventory)
+  // ============================================================
+
+  /// Fetch all unit types for a property with availability stats from
+  /// the v_unit_type_availability view.
+  Future<List<PropertyUnitType>> getUnitTypes(String propertyId) async {
+    // Fetch both tables in parallel, then merge.
+    final results = await Future.wait([
+      _c
+          .from('property_unit_types')
+          .select()
+          .eq('property_id', propertyId)
+          .order('display_order'),
+      _c
+          .from('v_unit_type_availability')
+          .select('unit_type_id, reserved_units, sold_units, available_units')
+          .eq('property_id', propertyId),
+    ]);
+
+    final unitRows = (results[0] as List);
+    final availRows = (results[1] as List);
+
+    // Build a quick lookup of availability by unit_type_id
+    final availMap = <String, Map<String, dynamic>>{};
+    for (final a in availRows) {
+      final ma = a as Map<String, dynamic>;
+      availMap[ma['unit_type_id'] as String] = ma;
+    }
+
+    final result = <PropertyUnitType>[];
+    for (final r in unitRows) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final avail = availMap[m['id'] as String];
+      if (avail != null) {
+        m['reserved_units'] = avail['reserved_units'];
+        m['sold_units'] = avail['sold_units'];
+        m['available_units'] = avail['available_units'];
+      }
+      result.add(PropertyUnitType.fromMap(m));
+    }
+    return result;
+  }
+
+  /// Fetch a single unit type by id, with availability stats.
+  Future<PropertyUnitType?> getUnitTypeById(String unitTypeId) async {
+    final row = await _c
+        .from('property_unit_types')
+        .select()
+        .eq('id', unitTypeId)
+        .maybeSingle();
+    if (row == null) return null;
+
+    final avail = await _c
+        .from('v_unit_type_availability')
+        .select('reserved_units, sold_units, available_units')
+        .eq('unit_type_id', unitTypeId)
+        .maybeSingle();
+
+    final m = Map<String, dynamic>.from(row);
+    if (avail != null) {
+      m['reserved_units'] = avail['reserved_units'];
+      m['sold_units'] = avail['sold_units'];
+      m['available_units'] = avail['available_units'];
+    }
+    return PropertyUnitType.fromMap(m);
+  }
+
+  /// Insert a property + its unit types in sequence. If unit-type insert
+  /// fails, the property is cleaned up so we don't end up with orphaned
+  /// properties that have no inventory.
+  Future<String> createPropertyWithUnits({
+    required String agencyId,
+    required String title,
+    required String state,
+    required String? lga,
+    required String location,
+    String? description,
+    String? coverImageUrl,
+    List<String> gallery = const [],
+    PropertyType type = PropertyType.land,
+    required List<UnitTypeDraft> unitTypes,
+  }) async {
+    if (unitTypes.isEmpty) {
+      throw Exception('Add at least one unit type');
+    }
+
+    // Aggregate totals for the legacy columns (kept for backward compat
+    // with code that still reads properties.total_units / available_units).
+    final totalUnits =
+    unitTypes.fold<int>(0, (s, u) => s + u.totalUnits);
+    final minPrice = unitTypes
+        .map((u) => u.basePriceNgn)
+        .reduce((a, b) => a < b ? a : b);
+
+    // 1. Insert the property
+    final propRow = await _c
+        .from('properties')
+        .insert({
+      'agency_id': agencyId,
+      'title': title.trim(),
+      'property_type': type.name,
+      'status': 'available',
+      'state': state,
+      'location': location.trim(),
+      if (lga != null && lga.trim().isNotEmpty) 'lga': lga.trim(),
+      if (description != null && description.trim().isNotEmpty)
+        'description': description.trim(),
+      if (coverImageUrl != null) 'cover_image_url': coverImageUrl,
+      if (gallery.isNotEmpty) 'gallery_urls': gallery,
+      // Legacy aggregate columns (kept synced for the moment)
+      'base_price_ngn': minPrice,
+      'total_units': totalUnits,
+      'available_units': totalUnits,
+    })
+        .select('id')
+        .single();
+
+    final propertyId = propRow['id'] as String;
+
+    // 2. Insert all unit types
+    try {
+      final unitRows = <Map<String, dynamic>>[];
+      for (var i = 0; i < unitTypes.length; i++) {
+        final u = unitTypes[i];
+        unitRows.add({
+          'agency_id': agencyId,
+          'property_id': propertyId,
+          'title': u.title,
+          if (u.description != null) 'description': u.description,
+          if (u.sizeSqm != null) 'size_sqm': u.sizeSqm,
+          'base_price_ngn': u.basePriceNgn,
+          'total_units': u.totalUnits,
+          'display_order': i,
+        });
+      }
+      await _c.from('property_unit_types').insert(unitRows);
+    } catch (e) {
+      // Best-effort rollback so we don't orphan the property
+      try {
+        await _c.from('properties').delete().eq('id', propertyId);
+      } catch (_) {
+        // Swallow — we'll surface the original error below
+      }
+      rethrow;
+    }
+
+    await _c.from('activity_log').insert({
+      'agency_id': agencyId,
+      'entity_type': 'property',
+      'entity_id': propertyId,
+      'action': 'created',
+      'description':
+      'Property "$title" added with ${unitTypes.length} unit type(s)',
+    });
+
+    return propertyId;
+  }
+
+  // ============================================================
+  // Legacy create (kept so existing call sites still compile)
+  //
+  // New code should use createPropertyWithUnits.
+  // ============================================================
+
+  /// Create a new property without unit types.
+  ///
+  /// **Deprecated:** use [createPropertyWithUnits] instead. This is kept
+  /// only so older screens still compile; new properties created this
+  /// way will not show up correctly in the unit-inventory UI.
+  @Deprecated('Use createPropertyWithUnits instead')
   Future<String> create({
     required String agencyId,
     required String title,
@@ -113,6 +286,10 @@ class PropertiesRepository {
 
     return newId;
   }
+
+  // ============================================================
+  // Photos
+  // ============================================================
 
   /// Upload one or more photos to a property. Updates cover_image_url
   /// (if not yet set) and appends to gallery_urls.
@@ -193,6 +370,29 @@ class PropertiesRepository {
     PropertyStatus.soldOut => 'sold_out',
     PropertyStatus.inactive => 'inactive',
   };
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/// A unit-type entry being passed to [PropertiesRepository.createPropertyWithUnits].
+/// This is a plain class (not a record) so it can be referenced from
+/// the form screen cleanly.
+class UnitTypeDraft {
+  final String title;
+  final String? description;
+  final num? sizeSqm;
+  final num basePriceNgn;
+  final int totalUnits;
+
+  UnitTypeDraft({
+    required this.title,
+    required this.basePriceNgn,
+    required this.totalUnits,
+    this.description,
+    this.sizeSqm,
+  });
 }
 
 class PropertiesPage {

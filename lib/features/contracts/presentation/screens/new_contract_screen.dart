@@ -9,15 +9,23 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/clients_repository.dart';
-import '../../../auth/providers/auth_providers.dart';
 import '../../../clients/providers/clients_providers.dart';
 import '../../../properties/providers/properties_providers.dart';
 import '../../providers/contracts_providers.dart';
+import '../../../properties/presentation/widgets/unit_inventory_card.dart';
 
 class NewContractScreen extends ConsumerStatefulWidget {
   /// Pre-fill the property if we came from the property detail page.
   final String? propertyId;
-  const NewContractScreen({super.key, this.propertyId});
+
+  /// Pre-fill a specific unit type (when deep-linked from "Sell unit").
+  final String? unitTypeId;
+
+  const NewContractScreen({
+    super.key,
+    this.propertyId,
+    this.unitTypeId,
+  });
 
   @override
   ConsumerState<NewContractScreen> createState() => _NewContractScreenState();
@@ -27,6 +35,10 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
   // Selections
   ClientListItem? _client;
   Property? _property;
+  PropertyUnitType? _unitType;
+  List<PropertyUnitType> _availableUnitTypes = [];
+  bool _loadingUnits = false;
+
   final _unitLabel = TextEditingController();
 
   // Pricing
@@ -48,17 +60,54 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
     super.initState();
     // If we came from a property page, pre-load it
     if (widget.propertyId != null) {
-      _loadProperty(widget.propertyId!);
+      _loadProperty(widget.propertyId!, preselectUnitTypeId: widget.unitTypeId);
     }
   }
 
-  Future<void> _loadProperty(String id) async {
-    final repo = ref.read(propertiesRepoProvider);
-    final p = await repo.get(id);
-    if (!mounted) return;
+  Future<void> _loadProperty(String id, {String? preselectUnitTypeId}) async {
+    setState(() => _loadingUnits = true);
+    try {
+      final repo = ref.read(propertiesRepoProvider);
+      final p = await repo.get(id);
+      final types = await repo.getUnitTypes(id);
+      if (!mounted) return;
+
+      // Pick the unit type to pre-select:
+      //  - if URL specified one and it's still available, use it
+      //  - otherwise if there's exactly one type, auto-pick it
+      //  - otherwise leave null so the user picks
+      PropertyUnitType? selected;
+      if (preselectUnitTypeId != null) {
+        final match = types.where((t) => t.id == preselectUnitTypeId);
+        if (match.isNotEmpty) selected = match.first;
+      }
+      selected ??= types.length == 1 ? types.first : null;
+
+      setState(() {
+        _property = p;
+        _availableUnitTypes = types;
+        _unitType = selected;
+        if (selected != null) {
+          _totalPrice.text =
+              NumberFormat('#,###').format(selected.basePriceNgn);
+        }
+        _loadingUnits = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not load property: $e';
+          _loadingUnits = false;
+        });
+      }
+    }
+  }
+
+  void _onUnitTypeChanged(PropertyUnitType? t) {
+    if (t == null) return;
     setState(() {
-      _property = p;
-      _totalPrice.text = NumberFormat('#,###').format(p.basePrice);
+      _unitType = t;
+      _totalPrice.text = NumberFormat('#,###').format(t.basePriceNgn);
     });
   }
 
@@ -74,7 +123,8 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
   num? get _parsedDeposit => num.tryParse(_initialDeposit.text.replaceAll(',', ''));
 
   bool get _isValid {
-    if (_client == null || _property == null) return false;
+    if (_client == null || _property == null || _unitType == null) return false;
+    if (_unitType!.availableUnits <= 0) return false;
     final total = _parsedTotal;
     if (total == null || total <= 0) return false;
     final deposit = _parsedDeposit ?? 0;
@@ -106,7 +156,9 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
       final id = await repo.create(
         clientId: _client!.id,
         propertyId: _property!.id,
-        unitLabel: _unitLabel.text.trim().isEmpty ? null : _unitLabel.text.trim(),
+        propertyUnitTypeId: _unitType!.id,
+        unitLabel:
+        _unitLabel.text.trim().isEmpty ? null : _unitLabel.text.trim(),
         totalPrice: _parsedTotal!,
         initialDeposit: _parsedDeposit ?? 0,
         paymentPlan: _plan,
@@ -121,6 +173,7 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
       ref.invalidate(contractsListProvider);
       ref.invalidate(propertyDetailProvider(_property!.id));
       ref.invalidate(propertiesPageProvider);
+      ref.invalidate(unitTypesForPropertyProvider(_property!.id));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,7 +212,8 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
               ),
               const SizedBox(width: 4),
               const Text('New Contract',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                  style:
+                  TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 16),
@@ -180,8 +234,8 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
                           clientsAsync.when(
                             loading: () => const _LoadingStub(),
                             error: (e, _) => Text('Could not load clients: $e',
-                                style:
-                                const TextStyle(color: AppColors.danger)),
+                                style: const TextStyle(
+                                    color: AppColors.danger)),
                             data: (clients) => _ClientPicker(
                               clients: clients,
                               selected: _client,
@@ -195,27 +249,33 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
                           const SizedBox(height: 12),
                           if (_property == null)
                             _PickPropertyButton(
-                              onPick: (p) => setState(() {
-                                _property = p;
-                                _totalPrice.text =
-                                    NumberFormat('#,###').format(p.basePrice);
-                              }),
+                              onPick: (p) => _loadProperty(p.id),
                             )
                           else
                             _SelectedPropertyCard(
                               property: _property!,
                               onChange: () => setState(() {
                                 _property = null;
+                                _unitType = null;
+                                _availableUnitTypes = [];
                                 _totalPrice.clear();
                               }),
                             ),
 
-                          if (_property != null && _property!.totalUnits > 1) ...[
+                          if (_property != null) ...[
+                            const SizedBox(height: 12),
+                            const _SectionTitle('Unit type'),
+                            const SizedBox(height: 12),
+                            _unitTypePicker(),
+                          ],
+
+                          if (_unitType != null) ...[
                             const SizedBox(height: 12),
                             _LabelledField(
-                              label: 'Unit / plot label',
+                              label: 'Unit / plot label (optional)',
                               controller: _unitLabel,
-                              hint: 'e.g. Block A, Plot 7',
+                              hint:
+                              'e.g. Block A, Plot 7 — for the agency\'s records',
                             ),
                           ],
 
@@ -334,7 +394,8 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
               TextButton(
-                onPressed: _submitting ? null : () => context.go('/properties'),
+                onPressed:
+                _submitting ? null : () => context.go('/properties'),
                 child: const Text('Cancel'),
               ),
               const SizedBox(width: 8),
@@ -342,11 +403,13 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
                 onPressed: (_isValid && !_submitting) ? _submit : null,
                 icon: _submitting
                     ? const SizedBox(
-                    width: 16, height: 16,
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(
                         strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.check, size: 18),
-                label: Text(_submitting ? 'Creating…' : 'Create contract'),
+                label:
+                Text(_submitting ? 'Creating…' : 'Create contract'),
               ),
             ],
           ),
@@ -366,6 +429,73 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
         Expanded(child: right),
       ],
     );
+  }
+
+  Widget _unitTypePicker() {
+    if (_loadingUnits) return const _LoadingStub();
+
+    if (_availableUnitTypes.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.warnLight,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: AppColors.warn),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'This property has no unit types defined. '
+                    'Add at least one unit type to the property before selling.',
+                style: TextStyle(fontSize: 13, color: AppColors.warn),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<PropertyUnitType>(
+      value: _unitType,
+      isDense: true,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        hintText: 'Select a unit type',
+        isDense: true,
+        prefixIcon: Icon(Icons.grid_view_outlined,
+            size: 18, color: AppColors.muted),
+      ),
+      items: [
+        for (final t in _availableUnitTypes)
+          DropdownMenuItem<PropertyUnitType>(
+            value: t,
+            enabled: t.availableUnits > 0,
+            child: Text(
+              _unitTypeLabel(t),
+              style: TextStyle(
+                fontSize: 13,
+                color: t.availableUnits > 0
+                    ? AppColors.text
+                    : AppColors.muted,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+      ],
+      onChanged: _onUnitTypeChanged,
+    );
+  }
+
+  String _unitTypeLabel(PropertyUnitType t) {
+    final size = t.sizeSqm != null ? ' · ${t.sizeSqm}sqm' : '';
+    final price = Formatters.nairaCompact(t.basePriceNgn);
+    if (t.availableUnits <= 0) {
+      return '${t.title}$size · $price · Sold out';
+    }
+    return '${t.title}$size · $price · '
+        '${t.availableUnits} of ${t.totalUnits} available';
   }
 
   Widget _planChooser() {
@@ -423,13 +553,15 @@ class _NewContractScreenState extends ConsumerState<NewContractScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Start date *',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           InkWell(
             onTap: _pickStartDate,
             borderRadius: BorderRadius.circular(8),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.bg,
                 border: Border.all(color: AppColors.border),
@@ -498,7 +630,8 @@ class _ClientPicker extends StatelessWidget {
       decoration: const InputDecoration(
         hintText: 'Select a client',
         isDense: true,
-        prefixIcon: Icon(Icons.person_outline, size: 18, color: AppColors.muted),
+        prefixIcon:
+        Icon(Icons.person_outline, size: 18, color: AppColors.muted),
       ),
       isExpanded: true,
       items: [
@@ -529,8 +662,12 @@ class _PickPropertyButton extends ConsumerWidget {
       error: (e, _) => Text('Could not load properties: $e',
           style: const TextStyle(color: AppColors.danger)),
       data: (page) {
+        // We filter by legacy `availableUnits` on the property for the
+        // top-level list. The detailed unit-type availability is checked
+        // again once a property is picked.
         final available = page.items
-            .where((p) => p.availableUnits > 0 && p.status != PropertyStatus.inactive)
+            .where((p) =>
+        p.availableUnits > 0 && p.status != PropertyStatus.inactive)
             .toList();
         if (available.isEmpty) {
           return Container(
@@ -560,8 +697,8 @@ class _PickPropertyButton extends ConsumerWidget {
           decoration: const InputDecoration(
             hintText: 'Select a property',
             isDense: true,
-            prefixIcon:
-            Icon(Icons.home_work_outlined, size: 18, color: AppColors.muted),
+            prefixIcon: Icon(Icons.home_work_outlined,
+                size: 18, color: AppColors.muted),
           ),
           isExpanded: true,
           items: [
@@ -588,7 +725,8 @@ class _PickPropertyButton extends ConsumerWidget {
 class _SelectedPropertyCard extends StatelessWidget {
   final Property property;
   final VoidCallback onChange;
-  const _SelectedPropertyCard({required this.property, required this.onChange});
+  const _SelectedPropertyCard(
+      {required this.property, required this.onChange});
 
   @override
   Widget build(BuildContext context) {
@@ -600,7 +738,8 @@ class _SelectedPropertyCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.home_work_outlined, color: AppColors.brand, size: 20),
+          const Icon(Icons.home_work_outlined,
+              color: AppColors.brand, size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -610,9 +749,9 @@ class _SelectedPropertyCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w500)),
                 Text(
-                  '${property.location}, ${property.state} · '
-                      '${property.availableUnits} of ${property.totalUnits} units available',
-                  style: const TextStyle(fontSize: 11, color: AppColors.muted),
+                  '${property.location}, ${property.state}',
+                  style:
+                  const TextStyle(fontSize: 11, color: AppColors.muted),
                 ),
               ],
             ),
@@ -643,9 +782,8 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final balance = totalPrice - deposit;
-    final perInstallment = plan == PaymentPlan.outright
-        ? balance
-        : (balance / months);
+    final perInstallment =
+    plan == PaymentPlan.outright ? balance : (balance / months);
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -740,7 +878,8 @@ class _LabelledField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           TextField(
             controller: controller,

@@ -62,7 +62,7 @@ class _PropertiesScreenState extends ConsumerState<PropertiesScreen> {
                             fontSize: 20, fontWeight: FontWeight.w600)),
                     SizedBox(height: 2),
                     Text(
-                      'Land, houses, estates — everything in your inventory.',
+                      'Estates and developments — your sellable inventory.',
                       style: TextStyle(color: AppColors.muted, fontSize: 13),
                     ),
                   ],
@@ -150,8 +150,7 @@ class _PropertiesScreenState extends ConsumerState<PropertiesScreen> {
                 if (page.items.isEmpty) {
                   return EmptyState(
                     icon: Icons.home_work_outlined,
-                    title:
-                    filter.search.isEmpty && filter.status == null
+                    title: filter.search.isEmpty && filter.status == null
                         ? 'No properties yet'
                         : 'No properties match your filters',
                     message: filter.search.isEmpty && filter.status == null
@@ -159,7 +158,8 @@ class _PropertiesScreenState extends ConsumerState<PropertiesScreen> {
                         : 'Try clearing the search or status filter.',
                     action: (filter.search.isEmpty && filter.status == null)
                         ? FilledButton.icon(
-                      onPressed: () => context.go('/properties/new'),
+                      onPressed: () =>
+                          context.go('/properties/new'),
                       icon: const Icon(Icons.add, size: 18),
                       label: const Text('Add your first property'),
                     )
@@ -214,12 +214,17 @@ class _PropertiesGrid extends StatelessWidget {
   }
 }
 
-class _PropertyCard extends StatelessWidget {
+/// A property card that loads its own unit-type summary asynchronously
+/// so the grid renders fast (basic info from the property row first,
+/// unit details fill in shortly after).
+class _PropertyCard extends ConsumerWidget {
   final Property property;
   const _PropertyCard({required this.property});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unitsAsync = ref.watch(_unitTypesGridProvider(property.id));
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -241,7 +246,8 @@ class _PropertyCard extends StatelessWidget {
                         color: AppColors.bg2,
                         child: const Center(
                           child: SizedBox(
-                            width: 20, height: 20,
+                            width: 20,
+                            height: 20,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: AppColors.brand),
                           ),
@@ -249,7 +255,8 @@ class _PropertyCard extends StatelessWidget {
                       ),
                       errorWidget: (_, __, ___) => Container(
                         color: AppColors.bg2,
-                        child: const Icon(Icons.image_not_supported_outlined,
+                        child: const Icon(
+                            Icons.image_not_supported_outlined,
                             color: AppColors.muted),
                       ),
                     )
@@ -262,7 +269,8 @@ class _PropertyCard extends StatelessWidget {
                       ),
                     ),
                   Positioned(
-                    top: 8, left: 8,
+                    top: 8,
+                    left: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
@@ -313,33 +321,20 @@ class _PropertyCard extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontSize: 11, color: AppColors.muted),
+                                    fontSize: 11,
+                                    color: AppColors.muted),
                               ),
                             ),
                           ],
                         ),
                       ],
                     ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          Formatters.nairaCompact(property.basePrice),
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.brand),
-                        ),
-                        Text(
-                          property.totalUnits > 1
-                              ? '${property.availableUnits}/${property.totalUnits} units'
-                              : (property.availableUnits > 0
-                              ? 'Available'
-                              : 'Sold'),
-                          style: const TextStyle(
-                              fontSize: 10, color: AppColors.muted),
-                        ),
-                      ],
+                    unitsAsync.when(
+                      loading: () => _legacySummary(),
+                      error: (_, __) => _legacySummary(),
+                      data: (units) => units.isEmpty
+                          ? _legacySummary()
+                          : _unitTypeSummary(units),
                     ),
                   ],
                 ),
@@ -350,4 +345,71 @@ class _PropertyCard extends StatelessWidget {
       ),
     );
   }
+
+  /// Fallback summary using the legacy properties.total_units columns.
+  /// Used while loading or if no unit types are defined.
+  Widget _legacySummary() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          Formatters.nairaCompact(property.basePrice),
+          style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.brand),
+        ),
+        Text(
+          property.totalUnits > 1
+              ? '${property.availableUnits}/${property.totalUnits} units'
+              : (property.availableUnits > 0 ? 'Available' : 'Sold'),
+          style: const TextStyle(fontSize: 10, color: AppColors.muted),
+        ),
+      ],
+    );
+  }
+
+  /// Rich summary computed from actual unit types.
+  /// - Price shows a range if multiple types, single price if uniform.
+  /// - Unit count shows live available / total.
+  Widget _unitTypeSummary(List<PropertyUnitType> units) {
+    final totalUnits = units.fold<int>(0, (s, u) => s + u.totalUnits);
+    final availableUnits =
+    units.fold<int>(0, (s, u) => s + u.availableUnits);
+
+    final prices = units.map((u) => u.basePriceNgn).toList()
+      ..sort((a, b) => a.compareTo(b));
+    final minPrice = prices.first;
+    final maxPrice = prices.last;
+    final priceLabel = minPrice == maxPrice
+        ? Formatters.nairaCompact(minPrice)
+        : '${Formatters.nairaCompact(minPrice)}–${Formatters.nairaCompact(maxPrice)}';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          priceLabel,
+          style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.brand),
+        ),
+        Text(
+          totalUnits > 1
+              ? '$availableUnits/$totalUnits units'
+              : (availableUnits > 0 ? 'Available' : 'Sold'),
+          style: const TextStyle(fontSize: 10, color: AppColors.muted),
+        ),
+      ],
+    );
+  }
 }
+
+/// Per-property unit-types provider used by the grid cards.
+/// Cached so the same property doesn't refetch on rebuild.
+final _unitTypesGridProvider =
+FutureProvider.family<List<PropertyUnitType>, String>(
+        (ref, propertyId) async {
+      return ref.read(propertiesRepoProvider).getUnitTypes(propertyId);
+    });

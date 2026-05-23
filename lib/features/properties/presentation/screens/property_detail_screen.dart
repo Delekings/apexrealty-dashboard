@@ -10,6 +10,7 @@ import '../../../../core/widgets/photo_picker.dart';
 import '../../../../data/models/models.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/properties_providers.dart';
+import '../widgets/unit_inventory_card.dart';
 
 class PropertyDetailScreen extends ConsumerStatefulWidget {
   final String propertyId;
@@ -25,7 +26,6 @@ class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
   bool _uploadingMore = false;
 
   Future<void> _addMorePhotos() async {
-    // Use the same picker logic but trigger directly
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -60,7 +60,7 @@ class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
         loading: () => const Center(
             child: CircularProgressIndicator(color: AppColors.brand)),
         error: (e, _) => Center(
-          child: Text('Couldn\'t load property: $e',
+          child: Text("Couldn't load property: $e",
               style: const TextStyle(color: AppColors.danger)),
         ),
         data: (property) => _Body(
@@ -122,16 +122,6 @@ class _Body extends StatelessWidget {
               icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
               label: const Text('Add photos'),
             ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: property.availableUnits > 0
-                  ? () => context.go('/contracts/new?property=${property.id}')
-                  : null,
-              icon: const Icon(Icons.assignment_add, size: 16),
-              label: Text(property.availableUnits > 0
-                  ? 'Sell to client'
-                  : 'Sold out'),
-            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -141,15 +131,33 @@ class _Body extends StatelessWidget {
               ? Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 3, child: _Gallery(property: property)),
+              Expanded(
+                flex: 3,
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _Gallery(property: property),
+                      const SizedBox(height: 16),
+                      UnitInventoryCard(propertyId: property.id),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(width: 16),
-              Expanded(flex: 2, child: _InfoColumn(property: property)),
+              Expanded(
+                flex: 2,
+                child: SingleChildScrollView(
+                  child: _InfoColumn(property: property),
+                ),
+              ),
             ],
           )
               : SingleChildScrollView(
             child: Column(
               children: [
                 _Gallery(property: property),
+                const SizedBox(height: 12),
+                UnitInventoryCard(propertyId: property.id),
                 const SizedBox(height: 12),
                 _InfoColumn(property: property),
               ],
@@ -169,8 +177,7 @@ class _Gallery extends StatelessWidget {
   Widget build(BuildContext context) {
     final allPhotos = [
       if (property.coverImageUrl != null) property.coverImageUrl!,
-      // gallery field would be loaded if we extended Property model;
-      // for now we just show the cover
+      ...property.gallery,
     ];
 
     return Card(
@@ -202,7 +209,8 @@ class _Gallery extends StatelessWidget {
           placeholder: (_, __) => Container(
             color: AppColors.bg2,
             child: const Center(
-              child: CircularProgressIndicator(color: AppColors.brand),
+              child:
+              CircularProgressIndicator(color: AppColors.brand),
             ),
           ),
           errorWidget: (_, __, ___) => Container(
@@ -225,7 +233,7 @@ class _InfoColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Status + price card
+        // Status + type card
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -257,46 +265,21 @@ class _InfoColumn extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                const Text('Base price per unit',
-                    style:
-                    TextStyle(fontSize: 11, color: AppColors.muted)),
-                Text(
-                  Formatters.naira(property.basePrice),
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.brand),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _miniStat(
-                        label: 'Available',
-                        value: '${property.availableUnits}',
-                        color: AppColors.brand,
-                      ),
-                    ),
-                    Container(width: 1, height: 36, color: AppColors.border),
-                    Expanded(
-                      child: _miniStat(
-                        label: 'Total units',
-                        value: '${property.totalUnits}',
-                        color: AppColors.text,
-                      ),
-                    ),
-                    Container(width: 1, height: 36, color: AppColors.border),
-                    Expanded(
-                      child: _miniStat(
-                        label: 'Sold',
-                        value:
-                        '${property.totalUnits - property.availableUnits}',
-                        color: AppColors.gold,
-                      ),
-                    ),
-                  ],
-                ),
+                if (property.description != null &&
+                    property.description!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text('About this property',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted,
+                          letterSpacing: 0.5)),
+                  const SizedBox(height: 6),
+                  Text(
+                    property.description!,
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                ],
               ],
             ),
           ),
@@ -322,7 +305,9 @@ class _InfoColumn extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '${property.location}\n${property.state}',
+                        property.lga != null
+                            ? '${property.location}\n${property.lga}, ${property.state}'
+                            : '${property.location}\n${property.state}',
                         style: const TextStyle(
                             fontSize: 13, color: AppColors.text),
                       ),
@@ -333,23 +318,6 @@ class _InfoColumn extends StatelessWidget {
             ),
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _miniStat({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Column(
-      children: [
-        Text(value,
-            style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w600, color: color)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: const TextStyle(fontSize: 10, color: AppColors.muted)),
       ],
     );
   }
@@ -420,7 +388,8 @@ class _AddMorePhotosFlowState extends ConsumerState<_AddMorePhotosFlow> {
             ),
             const SizedBox(width: 8),
             FilledButton(
-              onPressed: (_photos.isNotEmpty && !_uploading) ? _upload : null,
+              onPressed:
+              (_photos.isNotEmpty && !_uploading) ? _upload : null,
               child: Text(_uploading ? 'Uploading…' : 'Upload'),
             ),
           ],
