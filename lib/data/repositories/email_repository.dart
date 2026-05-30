@@ -53,7 +53,6 @@ class EmailAutomation {
     createdAt: DateTime.parse(m['created_at'] as String),
   );
 
-  /// Human-friendly trigger description
   String describeTrigger() {
     return switch (triggerType) {
       'client_birthday' => 'On client birthday',
@@ -69,7 +68,6 @@ class EmailAutomation {
     };
   }
 }
-
 
 class EmailMessage {
   final String id;
@@ -215,6 +213,10 @@ class EmailCampaign {
 class EmailRepository {
   final SupabaseClient _c = SupabaseService.client;
 
+  // ----------------------------------------------------------
+  // Single send
+  // ----------------------------------------------------------
+
   /// Send a single email to a client. Returns the campaign ID + message ID.
   Future<({String campaignId, String messageId})> sendToClient({
     required String clientId,
@@ -259,7 +261,10 @@ class EmailRepository {
         .toList();
   }
 
-  /// Load this agency's email config (returns null if never configured).
+  // ----------------------------------------------------------
+  // Agency config
+  // ----------------------------------------------------------
+
   Future<EmailProviderConfig?> getMyAgencyConfig() async {
     final agencyId = await _myAgencyId();
     if (agencyId == null) return null;
@@ -274,7 +279,6 @@ class EmailRepository {
     return EmailProviderConfig.fromMap(row);
   }
 
-  /// Save (insert or update) this agency's email config.
   Future<void> saveMyAgencyConfig({
     required String? fromName,
     required String? replyToEmail,
@@ -291,7 +295,10 @@ class EmailRepository {
     }, onConflict: 'agency_id');
   }
 
-  /// List all campaigns for this agency, newest first.
+  // ----------------------------------------------------------
+  // Campaigns
+  // ----------------------------------------------------------
+
   Future<List<EmailCampaign>> listCampaigns({int limit = 50}) async {
     final agencyId = await _myAgencyId();
     if (agencyId == null) return [];
@@ -308,35 +315,7 @@ class EmailRepository {
         .toList();
   }
 
-  // ----------------------------------------------------------
-  // Helpers
-  // ----------------------------------------------------------
-
-  String _extractError(dynamic body, int status) {
-    String msg = 'Status $status';
-    if (body is Map) {
-      msg = body['error']?.toString() ?? msg;
-      if (body['details'] != null) {
-        msg += ' — ${body['details']}';
-      }
-    } else if (body != null) {
-      msg = body.toString();
-    }
-    return msg;
-  }
-
-  Future<String?> _myAgencyId() async {
-    final userId = _c.auth.currentUser?.id;
-    if (userId == null) return null;
-    final r = await _c
-        .from('profiles')
-        .select('agency_id')
-        .eq('id', userId)
-        .maybeSingle();
-    return r?['agency_id'] as String?;
-  }
   /// Send a campaign to multiple recipients defined by [filter].
-  /// Returns the campaign ID + counts after dispatch.
   Future<({String campaignId, int totalRecipients, int sentCount, int failedCount})>
   sendBulk({
     required String campaignName,
@@ -371,8 +350,80 @@ class EmailRepository {
     }
   }
 
-  /// Count how many eligible recipients a filter would resolve to.
-  /// Used in the compose dialog to show a live preview before sending.
+  /// Schedule a campaign to send at a future time. Does NOT dispatch
+  /// immediately. The scheduler Edge Function will pick it up at the
+  /// scheduled_for time and dispatch via Resend.
+  Future<({String campaignId, int recipientCount})> scheduleCampaign({
+    required String campaignName,
+    required String subject,
+    required String html,
+    required Map<String, dynamic> filter,
+    required DateTime scheduledFor,
+  }) async {
+    final agencyId = await _myAgencyId();
+    if (agencyId == null) throw Exception('No agency on profile');
+
+    final recipientCount = await previewRecipientCount(filter);
+    if (recipientCount == 0) {
+      throw Exception('No eligible recipients for this filter');
+    }
+    if (scheduledFor.isBefore(DateTime.now())) {
+      throw Exception('Scheduled time must be in the future');
+    }
+
+    final cfg = await getMyAgencyConfig();
+    final fromName = cfg?.fromName;
+    final replyTo = cfg?.replyToEmail;
+
+    final userId = _c.auth.currentUser?.id;
+
+    final row = await _c.from('email_campaigns').insert({
+      'agency_id': agencyId,
+      'created_by': userId,
+      'name': campaignName,
+      'subject': subject,
+      'body_html': html,
+      'from_name': fromName,
+      'reply_to_email': replyTo,
+      'recipient_filter': filter,
+      'recipient_count': recipientCount,
+      'total_recipients': recipientCount,
+      'status': 'scheduled',
+      'scheduled_for': scheduledFor.toUtc().toIso8601String(),
+    }).select('id').single();
+
+    return (
+    campaignId: row['id'] as String,
+    recipientCount: recipientCount,
+    );
+  }
+
+  /// Cancel a scheduled campaign. Only works if status is still 'scheduled'.
+  Future<void> cancelScheduledCampaign(String campaignId) async {
+    await _c
+        .from('email_campaigns')
+        .update({'status': 'cancelled'})
+        .eq('id', campaignId)
+        .eq('status', 'scheduled');
+  }
+
+  /// Manually trigger the scheduler (for testing).
+  Future<Map<String, dynamic>> runSchedulerNow() async {
+    try {
+      final res = await _c.functions.invoke('email-scheduler', body: {});
+      if (res.status != 200) {
+        throw Exception(_extractError(res.data, res.status));
+      }
+      return res.data as Map<String, dynamic>;
+    } on FunctionException catch (e) {
+      throw Exception(_extractError(e.details, e.status));
+    }
+  }
+
+  // ----------------------------------------------------------
+  // Recipient resolution
+  // ----------------------------------------------------------
+
   Future<int> previewRecipientCount(Map<String, dynamic> filter) async {
     final agencyId = await _myAgencyId();
     if (agencyId == null) return 0;
@@ -405,7 +456,6 @@ class EmailRepository {
     }
 
     if (type == 'has_active_contract') {
-      // Distinct client_ids with active contracts
       final rows = await _c
           .from('contracts')
           .select('client_id, client:clients!inner(email, email_subscribed)')
@@ -426,7 +476,8 @@ class EmailRepository {
     if (type == 'has_overdue') {
       final rows = await _c
           .from('installments')
-          .select('contract:contracts!inner(client_id, client:clients!inner(email, email_subscribed, agency_id))')
+          .select(
+          'contract:contracts!inner(client_id, client:clients!inner(email, email_subscribed, agency_id))')
           .eq('status', 'overdue');
       final ids = <String>{};
       for (final r in rows as List) {
@@ -446,8 +497,6 @@ class EmailRepository {
     return 0;
   }
 
-  /// Get the distinct states that this agency's clients live in.
-  /// Useful for the "by_state" filter UI.
   Future<List<String>> getClientStates() async {
     final agencyId = await _myAgencyId();
     if (agencyId == null) return [];
@@ -466,7 +515,11 @@ class EmailRepository {
     }
     return states.toList()..sort();
   }
-  /// List all automation rules for this agency.
+
+  // ----------------------------------------------------------
+  // Automations
+  // ----------------------------------------------------------
+
   Future<List<EmailAutomation>> listAutomations() async {
     final agencyId = await _myAgencyId();
     if (agencyId == null) return [];
@@ -480,7 +533,6 @@ class EmailRepository {
         .toList();
   }
 
-  /// Create a new automation rule.
   Future<String> createAutomation({
     required String name,
     String? description,
@@ -511,7 +563,6 @@ class EmailRepository {
     return res['id'] as String;
   }
 
-  /// Toggle whether an automation is active.
   Future<void> setAutomationActive({
     required String automationId,
     required bool isActive,
@@ -522,12 +573,10 @@ class EmailRepository {
     }).eq('id', automationId);
   }
 
-  /// Delete an automation.
   Future<void> deleteAutomation(String automationId) async {
     await _c.from('email_automations').delete().eq('id', automationId);
   }
 
-  /// Manually trigger the automation runner (for testing).
   Future<Map<String, dynamic>> runAutomationsNow() async {
     try {
       final res =
@@ -539,5 +588,33 @@ class EmailRepository {
     } on FunctionException catch (e) {
       throw Exception(_extractError(e.details, e.status));
     }
+  }
+
+  // ----------------------------------------------------------
+  // Helpers
+  // ----------------------------------------------------------
+
+  String _extractError(dynamic body, int status) {
+    String msg = 'Status $status';
+    if (body is Map) {
+      msg = body['error']?.toString() ?? msg;
+      if (body['details'] != null) {
+        msg += ' — ${body['details']}';
+      }
+    } else if (body != null) {
+      msg = body.toString();
+    }
+    return msg;
+  }
+
+  Future<String?> _myAgencyId() async {
+    final userId = _c.auth.currentUser?.id;
+    if (userId == null) return null;
+    final r = await _c
+        .from('profiles')
+        .select('agency_id')
+        .eq('id', userId)
+        .maybeSingle();
+    return r?['agency_id'] as String?;
   }
 }

@@ -14,11 +14,43 @@ final _campaignsProvider = FutureProvider.autoDispose((ref) async {
   return ref.read(_emailRepoProvider).listCampaigns();
 });
 
-class EmailCampaignsScreen extends ConsumerWidget {
+class EmailCampaignsScreen extends ConsumerStatefulWidget {
   const EmailCampaignsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EmailCampaignsScreen> createState() =>
+      _EmailCampaignsScreenState();
+}
+
+class _EmailCampaignsScreenState extends ConsumerState<EmailCampaignsScreen> {
+  bool _runningScheduler = false;
+
+  Future<void> _runScheduler() async {
+    setState(() => _runningScheduler = true);
+    try {
+      final res = await ref.read(_emailRepoProvider).runSchedulerNow();
+      final n = res['processed'] ?? 0;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Processed $n scheduled campaign${n == 1 ? "" : "s"}'),
+        backgroundColor: AppColors.brand,
+        behavior: SnackBarBehavior.floating,
+      ));
+      ref.invalidate(_campaignsProvider);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Failed: $e'),
+        backgroundColor: AppColors.danger,
+        behavior: SnackBarBehavior.floating,
+      ));
+    } finally {
+      if (mounted) setState(() => _runningScheduler = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final async = ref.watch(_campaignsProvider);
 
     return Scaffold(
@@ -35,6 +67,18 @@ class EmailCampaignsScreen extends ConsumerWidget {
             onPressed: () => ref.invalidate(_campaignsProvider),
           ),
           const SizedBox(width: 4),
+          OutlinedButton.icon(
+            icon: _runningScheduler
+                ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Icon(Icons.play_arrow, size: 16),
+            label: Text(_runningScheduler ? 'Running…' : 'Run scheduler'),
+            onPressed: _runningScheduler ? null : _runScheduler,
+          ),
+          const SizedBox(width: 8),
           FilledButton.icon(
             icon: const Icon(Icons.add, size: 16),
             label: const Text('New campaign'),

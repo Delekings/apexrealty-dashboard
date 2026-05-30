@@ -30,6 +30,8 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
   int? _recipientCount;
   bool _countingRecipients = false;
 
+  DateTime? _scheduledFor;
+
   bool _sending = false;
   String? _error;
 
@@ -62,6 +64,50 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
       default:
         return {'type': 'all'};
     }
+  }
+
+  String _formatScheduled() {
+    final s = _scheduledFor!;
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final h = s.hour.toString().padLeft(2, '0');
+    final m = s.minute.toString().padLeft(2, '0');
+    return '${s.day} ${months[s.month - 1]} · $h:$m';
+  }
+
+  Future<void> _pickSchedule() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _scheduledFor ?? now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(
+        _scheduledFor ?? now.add(const Duration(hours: 1)),
+      ),
+    );
+    if (time == null || !mounted) return;
+
+    final combined = DateTime(
+      picked.year, picked.month, picked.day,
+      time.hour, time.minute,
+    );
+    if (combined.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Scheduled time must be in the future'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.danger,
+      ));
+      return;
+    }
+    setState(() => _scheduledFor = combined);
   }
 
   Future<void> _refreshCount() async {
@@ -118,7 +164,6 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
     });
 
     try {
-      // Wrap body in HTML; rate limiting is server-side
       final html = '''
         <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
           ${body.replaceAll('\n', '<br>')}
@@ -133,6 +178,58 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
       );
 
       setState(() => _result = result);
+    } catch (e) {
+      setState(() =>
+      _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _schedule() async {
+    final name = _campaignNameCtrl.text.trim();
+    final subject = _subjectCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+
+    if (name.isEmpty || subject.isEmpty || body.isEmpty) {
+      setState(() => _error = 'Name, subject, and body are all required');
+      return;
+    }
+    if (_scheduledFor == null) {
+      setState(() => _error = 'Pick a scheduled time first');
+      return;
+    }
+    if (_filterType == 'by_state' && _selectedStates.isEmpty) {
+      setState(() => _error = 'Pick at least one state');
+      return;
+    }
+
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+
+    try {
+      final html = '''
+        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
+          ${body.replaceAll('\n', '<br>')}
+        </div>
+      ''';
+
+      final result = await ref.read(_emailRepoProvider).scheduleCampaign(
+        campaignName: name,
+        subject: subject,
+        html: html,
+        filter: _buildFilter(),
+        scheduledFor: _scheduledFor!,
+      );
+
+      setState(() => _result = (
+      campaignId: result.campaignId,
+      totalRecipients: result.recipientCount,
+      sentCount: 0,
+      failedCount: 0,
+      ));
     } catch (e) {
       setState(() =>
       _error = e.toString().replaceFirst('Exception: ', ''));
@@ -210,7 +307,8 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _label('Internal campaign name *',
-                        helper: 'Only you see this. e.g. "Q3 payment reminder"'),
+                        helper:
+                        'Only you see this. e.g. "Q3 payment reminder"'),
                     TextField(
                       controller: _campaignNameCtrl,
                       decoration: const InputDecoration(isDense: true),
@@ -266,26 +364,61 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
                   top: BorderSide(color: AppColors.border, width: 0.5),
                 ),
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Expanded(child: _recipientCountBadge()),
-                  TextButton(
-                    onPressed: _sending
-                        ? null
-                        : () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                  Row(
+                    children: [
+                      Expanded(child: _recipientCountBadge()),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  FilledButton.icon(
-                    onPressed: _sending ? null : _send,
-                    icon: _sending
-                        ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.send, size: 14),
-                    label: Text(_sending ? 'Sending…' : 'Send now'),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _sending ? null : _pickSchedule,
+                        icon: const Icon(Icons.schedule, size: 14),
+                        label: Text(_scheduledFor == null
+                            ? 'Schedule…'
+                            : _formatScheduled()),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: _sending
+                            ? null
+                            : () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 6),
+                      if (_scheduledFor != null) ...[
+                        FilledButton.icon(
+                          onPressed: _sending ? null : _schedule,
+                          icon: _sending
+                              ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white))
+                              : const Icon(Icons.schedule, size: 14),
+                          label:
+                          Text(_sending ? 'Scheduling…' : 'Schedule'),
+                        ),
+                      ] else ...[
+                        FilledButton.icon(
+                          onPressed: _sending ? null : _send,
+                          icon: _sending
+                              ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white))
+                              : const Icon(Icons.send, size: 14),
+                          label:
+                          Text(_sending ? 'Sending…' : 'Send now'),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -333,10 +466,12 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Recipients *',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              style:
+              TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           _radioOption('all', 'All clients with an email'),
-          _radioOption('has_active_contract', 'Clients with an active contract'),
+          _radioOption(
+              'has_active_contract', 'Clients with an active contract'),
           _radioOption('has_overdue', 'Clients with overdue installments'),
           _radioOption('by_state', 'Clients in specific state(s)'),
           if (_filterType == 'by_state') ...[
@@ -435,7 +570,9 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
 
   Widget _resultView() {
     final r = _result!;
+    final isScheduled = _scheduledFor != null;
     final allOk = r.failedCount == 0;
+
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
@@ -447,15 +584,23 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
             children: [
               Center(
                 child: Icon(
-                  allOk ? Icons.check_circle : Icons.error,
+                  isScheduled
+                      ? Icons.schedule
+                      : (allOk ? Icons.check_circle : Icons.error),
                   size: 40,
-                  color: allOk ? AppColors.brand : AppColors.warn,
+                  color: isScheduled
+                      ? AppColors.brand
+                      : (allOk ? AppColors.brand : AppColors.warn),
                 ),
               ),
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  allOk ? 'Campaign sent' : 'Campaign sent with errors',
+                  isScheduled
+                      ? 'Campaign scheduled'
+                      : (allOk
+                      ? 'Campaign sent'
+                      : 'Campaign sent with errors'),
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.w600),
                 ),
@@ -464,16 +609,29 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
               Center(
                 child: Column(
                   children: [
-                    Text(
-                      '${r.sentCount} of ${r.totalRecipients} delivered',
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                    if (r.failedCount > 0)
+                    if (isScheduled) ...[
                       Text(
-                        '${r.failedCount} failed',
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.danger),
+                        'Will send to ${r.totalRecipients} recipient${r.totalRecipients == 1 ? "" : "s"}',
+                        style: const TextStyle(fontSize: 13),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Scheduled for ${_formatScheduled()}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.muted),
+                      ),
+                    ] else ...[
+                      Text(
+                        '${r.sentCount} of ${r.totalRecipients} delivered',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      if (r.failedCount > 0)
+                        Text(
+                          '${r.failedCount} failed',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.danger),
+                        ),
+                    ],
                   ],
                 ),
               ),
