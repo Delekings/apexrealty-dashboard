@@ -9,6 +9,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/empty_state.dart';
 import '../../../../data/repositories/clients_repository.dart';
 import '../../../dashboard/presentation/widgets/activity_timeline.dart';
+import '../widgets/send_email_dialog.dart';
 import '../../providers/clients_providers.dart';
 
 class ClientDetailScreen extends ConsumerWidget {
@@ -92,6 +93,17 @@ class _Body extends StatelessWidget {
               onPressed: () => _launchWhatsApp(c.phone),
               icon: const Icon(Icons.chat_bubble_outline, size: 16),
               label: const Text('WhatsApp'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: c.email == null || c.email!.isEmpty
+                  ? null
+                  : () => showDialog(
+                context: context,
+                builder: (_) => SendEmailDialog(detail: detail),
+              ),
+              icon: const Icon(Icons.mail_outline, size: 16),
+              label: const Text('Email'),
             ),
             const SizedBox(width: 8),
             FilledButton.icon(

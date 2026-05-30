@@ -4,12 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/models.dart';
+import '../../../data/repositories/contract_templates_repository.dart';
 import '../../../data/repositories/contracts_repository.dart';
 import '../../../data/repositories/documents_repository.dart';
 import '../../../data/repositories/signatures_repository.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../contracts/providers/contracts_providers.dart';
 import '../services/sale_agreement_pdf.dart';
+
+final _templatesRepoProvider =
+Provider((_) => ContractTemplatesRepository());
 
 class SendForSignatureDialog extends ConsumerStatefulWidget {
   final ContractDetail contractDetail;
@@ -76,16 +80,22 @@ class _SendForSignatureDialogState
         throw Exception('No agency on your profile');
       }
 
-      // 1. Download the agency signature image bytes
+      // 1. Get the contract reference
+      final detail = widget.contractDetail;
+      final c = detail.contract;
+
+      // 2. Snapshot the current template state for this contract
+      //    (so future template edits don't retroactively change in-flight contracts)
+      await ref.read(_templatesRepoProvider).createSnapshot(c.id);
+
+      // 3. Download the agency signature image bytes
       final sigBytes = await ref
           .read(signaturesRepoProvider)
           .downloadImage(_selectedSignature!.signatureImagePath);
 
-      // 2. Build the PDF
-      final detail = widget.contractDetail;
-      final c = detail.contract;
-
+      // 4. Build the PDF using the snapshotted template
       final pdfBytes = await SaleAgreementPdf.build(SaleAgreementInput(
+        contractId: c.id,
         agencyName: detail.agencyName ?? 'Agency',
         agencyRcNumber: detail.agencyRcNumber,
         agencyAddress: detail.agencyAddress ?? '',
@@ -115,13 +125,13 @@ class _SendForSignatureDialogState
             : _buyerWitnessName.text.trim(),
       ));
 
-      // 3. Upload to storage
+      // 5. Upload to storage
       final pdfPath = await ref
           .read(documentsRepoProvider)
           .uploadUnsignedPdf(
           agencyId: profile!.agencyId!, pdfBytes: pdfBytes);
 
-      // 4. Create the signature request
+      // 6. Create the signature request
       final result =
       await ref.read(documentsRepoProvider).createSignatureRequest(
         contractId: c.id,

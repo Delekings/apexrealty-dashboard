@@ -24,6 +24,11 @@ import '../../features/settings/presentation/screens/signatures_settings_screen.
 import '../../features/signing/screens/signing_screen.dart';
 import '../../features/staff/presentation/screens/staff_screen.dart';
 import '../../features/properties/presentation/screens/new_property_screen.dart';
+import '../../features/settings/presentation/screens/contract_template_screen.dart';
+import '../../features/email/presentation/screens/email_settings_screen.dart';
+import '../../features/email/presentation/screens/email_campaigns_screen.dart';
+import '../../features/email/presentation/screens/email_automations_screen.dart';
+import 'package:flutter/material.dart';
 
 import 'app_shell.dart';
 
@@ -69,8 +74,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const SignInScreen(),
       ),
       GoRoute(
+        path: '/email/automations',
+        builder: (_, __) => const EmailAutomationsScreen(),
+      ),
+
+      GoRoute(
         path: '/signup',
         builder: (_, __) => const SignUpScreen(),
+      ),
+      GoRoute(
+        path: '/email/campaigns',
+        builder: (_, __) => const EmailCampaignsScreen(),
       ),
       GoRoute(
         path: '/sign/:token',
@@ -108,7 +122,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
+
+          GoRoute(
+            path: '/settings/contract-template',
+            builder: (_, __) => const ContractTemplateScreen(),
+
+          ),
           // Properties
+
+
           GoRoute(
             path: '/properties',
             builder: (_, __) => const PropertiesScreen(),
@@ -135,6 +157,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               propertyId: state.uri.queryParameters['property'],
               unitTypeId: state.uri.queryParameters['unit_type'],
             ),
+          ),
+          GoRoute(
+            path: '/email/settings',
+            builder: (_, __) => const EmailSettingsScreen(),
           ),
           GoRoute(
             path: '/contracts/:id',

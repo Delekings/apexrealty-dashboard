@@ -54,6 +54,16 @@ class Client {
   final String phone;
   final String? email;
   final String? state;
+  final String? address;
+  final String? gender;
+  final String? nationality;
+  final String? occupation;
+  final DateTime? dateOfBirth;
+  final String? bvn;
+  final String? nin;
+  final String? nextOfKinName;
+  final String? nextOfKinPhone;
+  final String? notes;
   final String? assignedAgentId;
   final DateTime createdAt;
 
@@ -65,6 +75,16 @@ class Client {
     required this.createdAt,
     this.email,
     this.state,
+    this.address,
+    this.gender,
+    this.nationality,
+    this.occupation,
+    this.dateOfBirth,
+    this.bvn,
+    this.nin,
+    this.nextOfKinName,
+    this.nextOfKinPhone,
+    this.notes,
     this.assignedAgentId,
   });
 
@@ -75,6 +95,18 @@ class Client {
     phone: m['phone'] as String,
     email: m['email'] as String?,
     state: m['state'] as String?,
+    address: m['address'] as String?,
+    gender: m['gender'] as String?,
+    nationality: m['nationality'] as String?,
+    occupation: m['occupation'] as String?,
+    dateOfBirth: m['date_of_birth'] != null
+        ? DateTime.parse(m['date_of_birth'] as String)
+        : null,
+    bvn: m['bvn'] as String?,
+    nin: m['nin'] as String?,
+    nextOfKinName: m['next_of_kin_name'] as String?,
+    nextOfKinPhone: m['next_of_kin_phone'] as String?,
+    notes: m['notes'] as String?,
     assignedAgentId: m['assigned_agent_id'] as String?,
     createdAt: DateTime.parse(m['created_at'] as String),
   );
@@ -103,6 +135,10 @@ class Property {
   final int availableUnits;
   final String? coverImageUrl;
   final List<String> gallery;
+  final String? surveyPlanNo;
+  final String? certificateOfOccupancyNo;
+  final num? parentParcelSizeSqm;
+  final String? fullLegalDescription;
 
   Property({
     required this.id,
@@ -119,6 +155,10 @@ class Property {
     this.description,
     this.coverImageUrl,
     this.gallery = const [],
+    this.surveyPlanNo,
+    this.certificateOfOccupancyNo,
+    this.parentParcelSizeSqm,
+    this.fullLegalDescription,
   });
 
   factory Property.fromMap(Map<String, dynamic> m) {
@@ -154,6 +194,10 @@ class Property {
       availableUnits: (m['available_units'] as num?)?.toInt() ?? 1,
       coverImageUrl: m['cover_image_url'] as String?,
       gallery: gallery,
+      surveyPlanNo: m['survey_plan_no'] as String?,
+      certificateOfOccupancyNo: m['certificate_of_occupancy_no'] as String?,
+      parentParcelSizeSqm: m['parent_parcel_size_sqm'] as num?,
+      fullLegalDescription: m['full_legal_description'] as String?,
     );
   }
 }
@@ -435,4 +479,146 @@ class Contract {
     notes: m['notes'] as String?,
     createdAt: DateTime.parse(m['created_at'] as String),
   );
+}
+
+// ============================================================
+// Contract template models
+// ============================================================
+
+class ContractTemplate {
+  final String id;
+  final String agencyId;
+  final String name;
+  final String? description;
+  final bool isDefault;
+  final bool isActive;
+  final String? customAppendixText;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  ContractTemplate({
+    required this.id,
+    required this.agencyId,
+    required this.name,
+    required this.isDefault,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+    this.description,
+    this.customAppendixText,
+  });
+
+  factory ContractTemplate.fromMap(Map<String, dynamic> m) => ContractTemplate(
+    id: m['id'] as String,
+    agencyId: m['agency_id'] as String,
+    name: m['name'] as String,
+    description: m['description'] as String?,
+    isDefault: (m['is_default'] as bool?) ?? false,
+    isActive: (m['is_active'] as bool?) ?? true,
+    customAppendixText: m['custom_appendix_text'] as String?,
+    createdAt: DateTime.parse(m['created_at'] as String),
+    updatedAt: DateTime.parse(m['updated_at'] as String),
+  );
+}
+
+class ContractClause {
+  final String id;
+  final String templateId;
+  final String agencyId;
+  final String sectionKey;
+  final String? sectionNumber;
+  final String sectionTitle;
+  final int sortOrder;
+  final String bodyMarkdown;
+  final bool isLocked;
+  final bool isHidden;
+  final DateTime updatedAt;
+
+  ContractClause({
+    required this.id,
+    required this.templateId,
+    required this.agencyId,
+    required this.sectionKey,
+    required this.sectionTitle,
+    required this.sortOrder,
+    required this.bodyMarkdown,
+    required this.isLocked,
+    required this.isHidden,
+    required this.updatedAt,
+    this.sectionNumber,
+  });
+
+  factory ContractClause.fromMap(Map<String, dynamic> m) => ContractClause(
+    id: m['id'] as String,
+    templateId: m['template_id'] as String,
+    agencyId: m['agency_id'] as String,
+    sectionKey: m['section_key'] as String,
+    sectionNumber: m['section_number'] as String?,
+    sectionTitle: m['section_title'] as String,
+    sortOrder: (m['sort_order'] as num).toInt(),
+    bodyMarkdown: m['body_markdown'] as String,
+    isLocked: (m['is_locked'] as bool?) ?? false,
+    isHidden: (m['is_hidden'] as bool?) ?? false,
+    updatedAt: DateTime.parse(m['updated_at'] as String),
+  );
+
+  ContractClause copyWith({
+    String? bodyMarkdown,
+    bool? isHidden,
+    int? sortOrder,
+  }) =>
+      ContractClause(
+        id: id,
+        templateId: templateId,
+        agencyId: agencyId,
+        sectionKey: sectionKey,
+        sectionNumber: sectionNumber,
+        sectionTitle: sectionTitle,
+        sortOrder: sortOrder ?? this.sortOrder,
+        bodyMarkdown: bodyMarkdown ?? this.bodyMarkdown,
+        isLocked: isLocked,
+        isHidden: isHidden ?? this.isHidden,
+        updatedAt: updatedAt,
+      );
+}
+
+class TemplateVariable {
+  final String token;
+  final String category;
+  final String displayName;
+  final String? description;
+  final String? exampleValue;
+  final int sortOrder;
+
+  TemplateVariable({
+    required this.token,
+    required this.category,
+    required this.displayName,
+    required this.sortOrder,
+    this.description,
+    this.exampleValue,
+  });
+
+  factory TemplateVariable.fromMap(Map<String, dynamic> m) => TemplateVariable(
+    token: m['token'] as String,
+    category: m['category'] as String,
+    displayName: m['display_name'] as String,
+    description: m['description'] as String?,
+    exampleValue: m['example_value'] as String?,
+    sortOrder: (m['sort_order'] as num).toInt(),
+  );
+
+  /// Human-friendly category label
+  String get categoryLabel => switch (category) {
+    'vendor' => 'Vendor (Agency)',
+    'purchaser' => 'Purchaser',
+    'property' => 'Property',
+    'contract' => 'Contract',
+    'payment' => 'Payment',
+    'witness' => 'Witnesses',
+    'lawyer' => 'Lawyer',
+    'legal' => 'Legal / Boilerplate',
+    'constant' => 'Constants',
+    _ => category,
+  };
 }

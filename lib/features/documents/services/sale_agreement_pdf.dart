@@ -1,35 +1,48 @@
 // lib/features/documents/services/sale_agreement_pdf.dart
 //
-// Generates a sale agreement PDF for a contract. The agency's
-// signature is embedded immediately (it's already saved). Client
-// and witness slots are blank — they get filled in later as each
-// party signs.
+// Hearthhaven-style Nigerian Contract of Sale of Land generator.
+// Renders clauses from the agency's configurable template
+// (lib/data/services/contract_template_renderer.dart) and produces
+// a 10-page formal legal document.
+//
+// Public API kept identical to the previous version so existing call
+// sites continue to compile:
+//   SaleAgreementPdf.build(SaleAgreementInput)
+//   SaleAgreementPdf.buildSignedWithAudit({input, auditEntries})
 
 import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../data/models/models.dart';
+import '../../../data/repositories/contract_templates_repository.dart';
+import '../../../data/services/contract_template_renderer.dart';
+
 
 class SaleAgreementInput {
+  // NEW — needed by the template-driven generator
+  final String contractId;
+
   // Agency
   final String agencyName;
   final String? agencyRcNumber;
   final String agencyAddress;
-  final String? agencyLogoBytesOrNull; // ignored for now; we put text header
-  final Uint8List? agencySignatureImage; // PNG bytes
+  final String? agencyLogoBytesOrNull;
+  final Uint8List? agencySignatureImage;
   final String agencySignerName;
   final String? agencySignerTitle;
 
   // Client signature (filled in after they sign)
   final Uint8List? clientSignatureImage;
-  final String? clientSignedAtDisplay; // e.g. "21 May 2026"
+  final String? clientSignedAtDisplay;
 
-// Vendor witness (filled in after they sign)
+  // Vendor witness (filled in after they sign)
   final Uint8List? vendorWitnessSignatureImage;
   final String? vendorWitnessSignedAtDisplay;
 
-// Buyer witness (filled in after they sign)
+  // Buyer witness (filled in after they sign)
   final Uint8List? buyerWitnessSignatureImage;
   final String? buyerWitnessSignedAtDisplay;
 
@@ -45,34 +58,28 @@ class SaleAgreementInput {
   final String propertyState;
   final String propertyLga;
   final num? propertySizeSqm;
-  final String? unitLabel; // e.g. "Plot 12"
+  final String? unitLabel;
 
   // Contract
   final String contractNo;
   final num totalPriceNgn;
   final num? initialDeposit;
-  final String paymentPlanLabel; // human-readable
+  final String paymentPlanLabel;
   final int? planMonths;
   final DateTime startDate;
   final DateTime agreementDate;
 
-  // Witnesses (filled-in details get printed; signatures stay blank
-  // until they actually sign through their own portals)
+  // Witnesses
   final String vendorWitnessName;
   final String? vendorWitnessOccupation;
   final String? vendorWitnessAddress;
 
-  final String? buyerWitnessName; // may be blank — buyer fills it
+  final String? buyerWitnessName;
   final String? buyerWitnessOccupation;
   final String? buyerWitnessAddress;
 
   SaleAgreementInput({
-    this.clientSignatureImage,
-    this.clientSignedAtDisplay,
-    this.vendorWitnessSignatureImage,
-    this.vendorWitnessSignedAtDisplay,
-    this.buyerWitnessSignatureImage,
-    this.buyerWitnessSignedAtDisplay,
+    required this.contractId,
     required this.agencyName,
     this.agencyRcNumber,
     required this.agencyAddress,
@@ -80,6 +87,12 @@ class SaleAgreementInput {
     this.agencySignatureImage,
     required this.agencySignerName,
     this.agencySignerTitle,
+    this.clientSignatureImage,
+    this.clientSignedAtDisplay,
+    this.vendorWitnessSignatureImage,
+    this.vendorWitnessSignedAtDisplay,
+    this.buyerWitnessSignatureImage,
+    this.buyerWitnessSignedAtDisplay,
     required this.clientFullName,
     this.clientAddress,
     required this.clientPhone,
@@ -106,145 +119,845 @@ class SaleAgreementInput {
   });
 }
 
+/// One signer's audit metadata for the final signed PDF.
+class SignerAuditInfo {
+  final String role;
+  final String name;
+  final String? email;
+  final String method;
+  final DateTime signedAt;
+  final String? ip;
+  final DateTime? otpVerifiedAt;
+
+  SignerAuditInfo({
+    required this.role,
+    required this.name,
+    this.email,
+    required this.method,
+    required this.signedAt,
+    this.ip,
+    this.otpVerifiedAt,
+  });
+}
+
 class SaleAgreementPdf {
   static final _money = NumberFormat('#,##0', 'en_NG');
-  static final _date = DateFormat('d MMMM, yyyy');
-  /// Builds the final fully-signed PDF: same content, all signatures
-  /// embedded, plus an audit page at the end.
-  static Future<Uint8List> buildSignedWithAudit({
-    required SaleAgreementInput input,
-    required List<SignerAuditInfo> auditEntries,
-  }) async {
+  static final _date = DateFormat('d MMMM yyyy');
+
+  /// Unsigned (agency-only) PDF. The new template-driven version.
+  static Future<Uint8List> build(SaleAgreementInput i) async {
+    final loaded = await _loadTemplateAndContext(i);
+    final clauses = loaded.clauses;
+    final customAppendix = loaded.customAppendix;
+    final ctx = loaded.ctx;
     final doc = pw.Document(
-      title: 'Sale Agreement (signed) - ${input.contractNo}',
-      author: input.agencyName,
+      title: 'Contract of Sale of Land — ${i.contractNo}',
+      author: i.agencyName,
     );
 
     pw.MemoryImage? agencySig;
-    if (input.agencySignatureImage != null) {
-      agencySig = pw.MemoryImage(input.agencySignatureImage!);
+    if (i.agencySignatureImage != null) {
+      agencySig = pw.MemoryImage(i.agencySignatureImage!);
     }
 
-    // Main agreement pages (same as unsigned, but signatures now embedded)
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(48, 48, 48, 48),
-        header: (_) => _header(input),
-        footer: (ctx) => _footer(ctx, input),
-        build: (_) => [
-          _title(input),
-          pw.SizedBox(height: 18),
-          _parties(input),
-          pw.SizedBox(height: 14),
-          _recitals(input),
-          pw.SizedBox(height: 14),
-          _heading('1. Property'),
-          _propertyBlock(input),
-          pw.SizedBox(height: 10),
-          _heading('2. Purchase Price'),
-          _priceBlock(input),
-          pw.SizedBox(height: 10),
-          _heading('3. Payment Plan'),
-          _planBlock(input),
-          pw.SizedBox(height: 10),
-          _heading('4. Title & Transfer'),
-          _paragraph(
-              'Upon full payment of the Purchase Price stated in Clause 2 above, '
-                  'the Vendor shall execute and deliver to the Purchaser all '
-                  'documents required to vest legal title to the Property in the '
-                  'Purchaser, including but not limited to a Deed of Assignment '
-                  'and any registrable instrument required under the Land Use '
-                  'Act of Nigeria.'),
-          pw.SizedBox(height: 10),
-          _heading('5. Default'),
-          _paragraph(
-              'In the event that the Purchaser defaults on any scheduled '
-                  'installment and fails to remedy such default within thirty '
-                  '(30) days of written notice from the Vendor, the Vendor may '
-                  'at its sole discretion terminate this Agreement and refund '
-                  'the Purchaser any amounts already paid less an administrative '
-                  'charge not exceeding ten percent (10%) of the total amounts '
-                  'received.'),
-          pw.SizedBox(height: 10),
-          _heading('6. Force Majeure'),
-          _paragraph(
-              'Neither party shall be liable for any failure or delay in '
-                  'performance under this Agreement due to events outside the '
-                  'reasonable control of the party, including but not limited '
-                  'to acts of God, governmental orders, civil unrest, '
-                  'pandemics, or natural disasters.'),
-          pw.SizedBox(height: 10),
-          _heading('7. Governing Law'),
-          _paragraph(
-              'This Agreement shall be governed by and construed in '
-                  'accordance with the laws of the Federal Republic of Nigeria. '
-                  'Any dispute arising out of or in connection with this '
-                  'Agreement shall be referred to the courts of ${input.propertyState} State.'),
-          pw.SizedBox(height: 22),
-          _signatureBlocks(input, agencySig),
-          pw.SizedBox(height: 16),
-          _witnessBlocks(input),
-        ],
-      ),
-    );
+    // ---- Cover page ----
+    doc.addPage(_coverPage(i, ctx));
 
-    // Audit page
+    // ---- Main body: parties, recitals, clauses, schedules ----
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(48, 48, 48, 48),
-        header: (_) => _header(input),
-        footer: (ctx) => _footer(ctx, input),
+        margin: const pw.EdgeInsets.fromLTRB(56, 56, 56, 56),
+        footer: (c) => _footer(c, i),
         build: (_) => [
-          pw.SizedBox(height: 10),
-          pw.Text('SIGNATURE AUDIT TRAIL',
-              style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                  letterSpacing: 1.2)),
-          pw.SizedBox(height: 4),
-          pw.Text(
-            'The following parties electronically signed this document. Each '
-                'signature is associated with an audit record below.',
-            style: const pw.TextStyle(
-                fontSize: 10, color: PdfColors.grey700),
-          ),
-          pw.SizedBox(height: 16),
-          for (final entry in auditEntries) _auditEntry(entry),
-          pw.SizedBox(height: 20),
-          pw.Container(
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.grey100,
-              borderRadius: pw.BorderRadius.circular(4),
-            ),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text('About this audit trail',
-                    style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColors.grey800)),
-                pw.SizedBox(height: 4),
-                pw.Text(
-                  'Each signatory verified their identity via a one-time code '
-                      'sent to their email address before signing. Signatures were '
-                      'recorded with timestamps and the IP address used to access '
-                      'the signing portal. This document was prepared and '
-                      'distributed via Lintel, an electronic signature platform.',
-                  style: const pw.TextStyle(
-                      fontSize: 8, color: PdfColors.grey800),
-                ),
-              ],
-            ),
-          ),
+          ..._renderClauses(clauses, ctx),
+          if (customAppendix != null && customAppendix.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            _sectionHeader(null, 'ADDITIONAL TERMS'),
+            _justified(
+                ContractTemplateRenderer.render(customAppendix, ctx)),
+          ],
+          pw.SizedBox(height: 18),
+          _firstSchedule(i, ctx),
+          pw.SizedBox(height: 18),
+          _secondSchedule(i, ctx),
+          pw.SizedBox(height: 24),
+          _signatureBlocks(i, agencySig, null, null, null),
         ],
       ),
     );
 
     return await doc.save();
+  }
+
+  /// Fully-signed PDF with embedded signatures + audit page.
+  static Future<Uint8List> buildSignedWithAudit({
+    required SaleAgreementInput input,
+    required List<SignerAuditInfo> auditEntries,
+  }) async {
+    final loaded = await _loadTemplateAndContext(input);
+    final clauses = loaded.clauses;
+    final customAppendix = loaded.customAppendix;
+    final ctx = loaded.ctx;
+
+    final doc = pw.Document(
+      title: 'Contract of Sale of Land (signed) — ${input.contractNo}',
+      author: input.agencyName,
+    );
+
+    pw.MemoryImage? agencySig;
+    pw.MemoryImage? clientSig;
+    pw.MemoryImage? vendorWitSig;
+    pw.MemoryImage? buyerWitSig;
+
+    if (input.agencySignatureImage != null) {
+      agencySig = pw.MemoryImage(input.agencySignatureImage!);
+    }
+    if (input.clientSignatureImage != null) {
+      clientSig = pw.MemoryImage(input.clientSignatureImage!);
+    }
+    if (input.vendorWitnessSignatureImage != null) {
+      vendorWitSig = pw.MemoryImage(input.vendorWitnessSignatureImage!);
+    }
+    if (input.buyerWitnessSignatureImage != null) {
+      buyerWitSig = pw.MemoryImage(input.buyerWitnessSignatureImage!);
+    }
+
+    // Cover
+    doc.addPage(_coverPage(input, ctx));
+
+    // Body
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(56, 56, 56, 56),
+        footer: (c) => _footer(c, input),
+        build: (_) => [
+          ..._renderClauses(clauses, ctx),
+          if (customAppendix != null && customAppendix.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            _sectionHeader(null, 'ADDITIONAL TERMS'),
+            _justified(
+                ContractTemplateRenderer.render(customAppendix, ctx)),
+          ],
+          pw.SizedBox(height: 18),
+          _firstSchedule(input, ctx),
+          pw.SizedBox(height: 18),
+          _secondSchedule(input, ctx),
+          pw.SizedBox(height: 24),
+          _signatureBlocks(
+              input, agencySig, clientSig, vendorWitSig, buyerWitSig),
+          pw.SizedBox(height: 18),
+          _preparedBy(ctx),
+        ],
+      ),
+    );
+
+    // Audit page
+    doc.addPage(_auditPage(input, auditEntries));
+
+    return await doc.save();
+  }
+
+  // ============================================================
+  // Template loading
+  // ============================================================
+
+  static Future<_LoadedTemplate> _loadTemplateAndContext(
+      SaleAgreementInput i) async {
+    final repo = ContractTemplatesRepository();
+    final ctx = await repo.buildRenderContext(i.contractId);
+
+    // Prefer snapshot if available (frozen clauses for a contract sent for signature)
+    final snapshot = await repo.getSnapshot(i.contractId);
+
+    List<ContractClause> sourceClauses;
+    String? appendix;
+
+    if (snapshot != null) {
+      sourceClauses = snapshot.clauses;
+      appendix = snapshot.appendix;
+    } else {
+      final tpl = await repo.getDefault();
+      sourceClauses = tpl.clauses.where((c) => !c.isHidden).toList();
+      appendix = tpl.template.customAppendixText;
+    }
+
+    final clauses = sourceClauses
+        .map((c) => _RenderableClause(
+      number: c.sectionNumber,
+      title: c.sectionTitle,
+      body: ContractTemplateRenderer.render(c.bodyMarkdown, ctx),
+      sectionKey: c.sectionKey,
+    ))
+        .toList();
+
+    return _LoadedTemplate(
+      clauses: clauses,
+      customAppendix: appendix,
+      ctx: ctx,
+    );
+  }
+
+  // ============================================================
+  // Cover page (Hearthhaven-style)
+  // ============================================================
+
+  static pw.Page _coverPage(SaleAgreementInput i, ContractRenderContext ctx) {
+    final vendor = (ctx.agency['name'] as String?) ?? i.agencyName;
+    final purchaser = i.clientFullName.toUpperCase();
+    final fullDesc =
+    ContractTemplateRenderer.render('{{property_full_legal_description}}', ctx);
+    final dateLine =
+        'DATED THIS ${_ordinal(i.agreementDate.day).toUpperCase()} DAY OF '
+        '${DateFormat('MMMM yyyy').format(i.agreementDate).toUpperCase()}.';
+
+    final lawyerName = ctx.agency['lawyer_name'] as String?;
+    final lawyerFirm = ctx.agency['lawyer_firm'] as String?;
+    final lawyerAddress = ctx.agency['lawyer_address'] as String?;
+    final lawyerEmail = ctx.agency['lawyer_email'] as String?;
+
+    return pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(64, 80, 64, 56),
+      build: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.SizedBox(height: 40),
+          pw.Text('CONTRACT OF SALE OF LAND',
+              style: pw.TextStyle(
+                  fontSize: 16,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 1.2)),
+          pw.SizedBox(height: 30),
+          pw.Text('BETWEEN',
+              style: pw.TextStyle(
+                  fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 24),
+          pw.Text(vendor.toUpperCase(),
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(
+                  fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 6),
+          pw.Text('(VENDOR)',
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 24),
+          pw.Text('AND',
+              style: pw.TextStyle(
+                  fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 24),
+          pw.Text(purchaser,
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(
+                  fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 6),
+          pw.Text('(PURCHASER)',
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 18),
+          pw.Text('IN RESPECT OF:',
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 12),
+          pw.Container(
+              width: 380,
+              child: pw.Divider(
+                  color: PdfColors.grey800, thickness: 0.6)),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            constraints: const pw.BoxConstraints(maxWidth: 440),
+            child: pw.Text(
+              fullDesc,
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 0.3),
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+              width: 380,
+              child: pw.Divider(
+                  color: PdfColors.grey800, thickness: 0.6)),
+          pw.SizedBox(height: 30),
+          pw.Text(dateLine,
+              style: pw.TextStyle(
+                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          // Prepared by section pinned-ish to bottom
+          pw.SizedBox(height: 60),
+          if (lawyerName != null && lawyerName.isNotEmpty)
+            pw.Align(
+              alignment: pw.Alignment.centerRight,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('PREPARED BY',
+                      style: pw.TextStyle(
+                          fontSize: 11,
+                          fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 6),
+                  pw.Text(lawyerName,
+                      style: pw.TextStyle(
+                          fontSize: 11,
+                          fontWeight: pw.FontWeight.bold)),
+                  if (lawyerFirm != null && lawyerFirm.isNotEmpty)
+                    pw.Text(lawyerFirm,
+                        style: pw.TextStyle(
+                            fontSize: 10,
+                            fontWeight: pw.FontWeight.bold)),
+                  pw.Text('(Attorneys-at-Law)',
+                      style: const pw.TextStyle(fontSize: 10)),
+                  if (lawyerAddress != null && lawyerAddress.isNotEmpty)
+                    pw.Container(
+                      width: 180,
+                      child: pw.Text(lawyerAddress,
+                          textAlign: pw.TextAlign.right,
+                          style: const pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.grey800)),
+                    ),
+                  if (lawyerEmail != null && lawyerEmail.isNotEmpty)
+                    pw.Text(lawyerEmail,
+                        style: const pw.TextStyle(
+                            fontSize: 9, color: PdfColors.grey700)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // Clause rendering
+  // ============================================================
+
+  static List<pw.Widget> _renderClauses(
+      List<_RenderableClause> clauses,
+      ContractRenderContext ctx,
+      ) {
+    final widgets = <pw.Widget>[];
+    for (final c in clauses) {
+      widgets.add(_sectionHeader(c.number, c.title));
+      widgets.add(pw.SizedBox(height: 4));
+      widgets.add(_justified(c.body));
+      widgets.add(pw.SizedBox(height: 10));
+    }
+    return widgets;
+  }
+
+  static pw.Widget _sectionHeader(String? number, String title) {
+    final prefix = number == null ? '' : '$number. ';
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 6, bottom: 2),
+      child: pw.Text(
+        '$prefix$title',
+        style: pw.TextStyle(
+            fontSize: 11.5,
+            fontWeight: pw.FontWeight.bold,
+            letterSpacing: 0.3),
+      ),
+    );
+  }
+
+  static pw.Widget _justified(String text) {
+    // Split on double newlines to preserve paragraph breaks
+    final paragraphs = text.split(RegExp(r'\n\s*\n'));
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        for (final p in paragraphs) ...[
+          pw.Text(
+            p.trim(),
+            textAlign: pw.TextAlign.justify,
+            style: const pw.TextStyle(fontSize: 10, lineSpacing: 2),
+          ),
+          if (p != paragraphs.last) pw.SizedBox(height: 6),
+        ],
+      ],
+    );
+  }
+
+  // ============================================================
+  // First Schedule (property description)
+  // ============================================================
+
+  static pw.Widget _firstSchedule(
+      SaleAgreementInput i, ContractRenderContext ctx) {
+    final fullDesc = ContractTemplateRenderer.render(
+        '{{property_full_legal_description}}', ctx);
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Center(
+          child: pw.Text('FIRST SCHEDULE',
+              style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 1.0)),
+        ),
+        pw.SizedBox(height: 10),
+        _justified(fullDesc),
+        pw.SizedBox(height: 12),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.grey100,
+            borderRadius: pw.BorderRadius.circular(4),
+          ),
+          child: pw.Text(
+            '[Survey plan image to be attached separately by the surveyor.]',
+            style: const pw.TextStyle(
+                fontSize: 9,
+                color: PdfColors.grey700),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // Second Schedule (payment plan table)
+  // ============================================================
+
+  static pw.Widget _secondSchedule(
+      SaleAgreementInput i, ContractRenderContext ctx) {
+    final installments = ctx.installments;
+    final clientName = i.clientFullName;
+    final freqWord = ContractTemplateRenderer.render(
+        '{{installment_frequency}}', ctx);
+    final amount = ContractTemplateRenderer.render(
+        '{{installment_amount_ngn}}', ctx);
+    final count = ContractTemplateRenderer.render(
+        '{{installment_count}}', ctx);
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Center(
+          child: pw.Text('SECOND SCHEDULE',
+              style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 1.0)),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Center(
+          child: pw.Text('PAYMENT PLAN',
+              style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  letterSpacing: 0.5)),
+        ),
+        pw.SizedBox(height: 12),
+        pw.Text('Client Name: $clientName',
+            style: const pw.TextStyle(fontSize: 10)),
+        pw.Text(
+          'Payment Plan: $count Months $freqWord Installment — $amount',
+          style: const pw.TextStyle(fontSize: 10),
+        ),
+        pw.SizedBox(height: 10),
+        pw.Table(
+          border: pw.TableBorder.all(
+              color: PdfColors.grey700, width: 0.4),
+          columnWidths: const {
+            0: pw.FixedColumnWidth(60),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FlexColumnWidth(2),
+          },
+          children: [
+            // Header row
+            pw.TableRow(
+              decoration: pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                _tableCell('Payment No.', isHeader: true),
+                _tableCell('Due Date', isHeader: true),
+                _tableCell('Amount Due (NGN)', isHeader: true),
+              ],
+            ),
+            for (final inst in installments)
+              pw.TableRow(
+                children: [
+                  _tableCell(inst.sequence.toString()),
+                  _tableCell(_date.format(inst.dueDate)),
+                  _tableCell(
+                    _statusAmount(inst),
+                  ),
+                ],
+              ),
+            // Total row
+            pw.TableRow(
+              decoration:
+              pw.BoxDecoration(color: PdfColors.grey100),
+              children: [
+                _tableCell('TOTAL', isHeader: true),
+                _tableCell(''),
+                _tableCell(
+                    'NGN ${_money.format(installments.fold<num>(0, (s, x) => s + x.amount))}',
+                    isHeader: true),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static String _statusAmount(Installment inst) {
+    final base = 'NGN ${_money.format(inst.amount)}';
+    if (inst.status == InstallmentStatus.paid) return '$base — PAID';
+    if (inst.status == InstallmentStatus.partial) {
+      return '$base — PART PAID (NGN ${_money.format(inst.amountPaid)})';
+    }
+    return base;
+  }
+
+  static pw.Widget _tableCell(String text, {bool isHeader = false}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: 9.5,
+          fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // Signature block (Vendor + Purchaser + Witnesses)
+  // ============================================================
+
+  static pw.Widget _signatureBlocks(
+      SaleAgreementInput i,
+      pw.MemoryImage? agencySig,
+      pw.MemoryImage? clientSig,
+      pw.MemoryImage? vendorWitSig,
+      pw.MemoryImage? buyerWitSig,
+      ) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(
+          'IN WITNESS WHEREOF the Parties hereto have executed this Contract of Sale of Land, the date and year first above written.',
+          textAlign: pw.TextAlign.justify,
+          style: const pw.TextStyle(fontSize: 10, lineSpacing: 2),
+        ),
+        pw.SizedBox(height: 14),
+        // ---- Vendor ----
+        pw.Text('SIGNED, SEALED and DELIVERED:',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 4),
+        pw.Text('By the within-named VENDOR:',
+            style: const pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 6),
+        pw.Text(
+          'THE COMMON SEAL OF ${i.agencyName.toUpperCase()} IS ATTACHED TO THIS CONTRACT OF SALE OF LAND',
+          style: pw.TextStyle(
+              fontSize: 10, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 6),
+        pw.Text('IN THE PRESENCE OF:',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 14),
+        // Two directors line
+        pw.Row(
+          children: [
+            pw.Expanded(child: _directorSlot(i, agencySig, isPrimary: true)),
+            pw.SizedBox(width: 32),
+            pw.Expanded(child: _directorSlot(i, null, isPrimary: false)),
+          ],
+        ),
+        pw.SizedBox(height: 24),
+        // ---- Purchaser ----
+        pw.Text('SIGNED, SEALED and DELIVERED',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 2),
+        pw.Text('By the within-named PURCHASER:',
+            style: const pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 14),
+        if (clientSig != null)
+          pw.Container(
+            height: 40,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Image(clientSig, height: 40),
+          )
+        else
+          pw.Container(
+            width: 220,
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                bottom:
+                pw.BorderSide(color: PdfColors.grey700, width: 0.5),
+              ),
+            ),
+            height: 30,
+          ),
+        pw.SizedBox(height: 4),
+        pw.Text(i.clientFullName.toUpperCase(),
+            style: pw.TextStyle(
+                fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 18),
+        // ---- Witness blocks ----
+        pw.Text('IN THE PRESENCE OF:',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              child: _witnessSlot(
+                heading: "Vendor's Witness",
+                name: i.vendorWitnessName,
+                occupation: i.vendorWitnessOccupation,
+                address: i.vendorWitnessAddress,
+                signature: vendorWitSig,
+                signedDate: i.vendorWitnessSignedAtDisplay,
+              ),
+            ),
+            pw.SizedBox(width: 28),
+            pw.Expanded(
+              child: _witnessSlot(
+                heading: "Purchaser's Witness",
+                name: i.buyerWitnessName,
+                occupation: i.buyerWitnessOccupation,
+                address: i.buyerWitnessAddress,
+                signature: buyerWitSig,
+                signedDate: i.buyerWitnessSignedAtDisplay,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _directorSlot(
+      SaleAgreementInput i, pw.MemoryImage? sig,
+      {required bool isPrimary}) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (sig != null)
+          pw.Container(
+            height: 36,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Image(sig, height: 36),
+          )
+        else
+          pw.Container(
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                bottom:
+                pw.BorderSide(color: PdfColors.grey700, width: 0.5),
+              ),
+            ),
+            height: 26,
+          ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+            isPrimary
+                ? i.agencySignerName
+                : '____________________________',
+            style: pw.TextStyle(
+                fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 2),
+        pw.Text('DIRECTOR',
+            style: pw.TextStyle(
+                fontSize: 9, fontWeight: pw.FontWeight.bold)),
+      ],
+    );
+  }
+
+  static pw.Widget _witnessSlot({
+    required String heading,
+    required String? name,
+    String? occupation,
+    String? address,
+    pw.MemoryImage? signature,
+    String? signedDate,
+  }) {
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Text(heading,
+            style: pw.TextStyle(
+                fontSize: 9, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 6),
+        _kvFill('Name', name ?? ''),
+        _kvFill('Address', address ?? ''),
+        _kvFill('Occupation', occupation ?? ''),
+        pw.SizedBox(height: 4),
+        if (signature != null)
+          pw.Container(
+            height: 32,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Image(signature, height: 32),
+          )
+        else
+          pw.Container(
+            decoration: const pw.BoxDecoration(
+              border: pw.Border(
+                bottom:
+                pw.BorderSide(color: PdfColors.grey700, width: 0.5),
+              ),
+            ),
+            height: 22,
+          ),
+        pw.SizedBox(height: 2),
+        pw.Text('Signature',
+            style: const pw.TextStyle(
+                fontSize: 8, color: PdfColors.grey700)),
+        pw.SizedBox(height: 4),
+        _kvFill('Date', signedDate ?? ''),
+      ],
+    );
+  }
+
+  static pw.Widget _kvFill(String k, String v) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+      child: pw.RichText(
+        text: pw.TextSpan(
+          children: [
+            pw.TextSpan(
+                text: '$k: ',
+                style: const pw.TextStyle(fontSize: 9)),
+            pw.TextSpan(
+              text: v.isEmpty ? '_________________________' : v,
+              style: pw.TextStyle(
+                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // Prepared by (footer of document body)
+  // ============================================================
+
+  static pw.Widget _preparedBy(ContractRenderContext ctx) {
+    final lawyerName = ctx.agency['lawyer_name'] as String?;
+    if (lawyerName == null || lawyerName.isEmpty) return pw.SizedBox.shrink();
+
+    final firm = ctx.agency['lawyer_firm'] as String?;
+    final address = ctx.agency['lawyer_address'] as String?;
+    final phone = ctx.agency['lawyer_phone'] as String?;
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.only(top: 18),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+        ),
+      ),
+      child: pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text('PREPARED BY:',
+                style: pw.TextStyle(
+                    fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 4),
+            pw.Container(
+              decoration: const pw.BoxDecoration(
+                border: pw.Border(
+                  bottom: pw.BorderSide(
+                      color: PdfColors.grey700, width: 0.5),
+                ),
+              ),
+              width: 200,
+              height: 18,
+            ),
+            pw.SizedBox(height: 2),
+            pw.Text(lawyerName,
+                style: pw.TextStyle(
+                    fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            if (firm != null && firm.isNotEmpty)
+              pw.Text(firm,
+                  style: const pw.TextStyle(
+                      fontSize: 9, color: PdfColors.grey800)),
+            pw.Text('Barrister & Solicitor, Supreme Court of Nigeria',
+                style: const pw.TextStyle(
+                    fontSize: 9, color: PdfColors.grey800)),
+            if (address != null && address.isNotEmpty)
+              pw.Container(
+                width: 200,
+                child: pw.Text(address,
+                    textAlign: pw.TextAlign.right,
+                    style: const pw.TextStyle(
+                        fontSize: 9, color: PdfColors.grey700)),
+              ),
+            if (phone != null && phone.isNotEmpty)
+              pw.Text('Tel: $phone',
+                  style: const pw.TextStyle(
+                      fontSize: 9, color: PdfColors.grey700)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // Audit page
+  // ============================================================
+
+  static pw.Page _auditPage(
+      SaleAgreementInput i, List<SignerAuditInfo> auditEntries) {
+    return pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(56, 56, 56, 56),
+      footer: (c) => _footer(c, i),
+      build: (_) => [
+        pw.Text('SIGNATURE AUDIT TRAIL',
+            style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                letterSpacing: 1.2)),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          'The following parties electronically signed this document. Each signature is associated with the audit record below.',
+          style:
+          const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+        ),
+        pw.SizedBox(height: 16),
+        for (final entry in auditEntries) _auditEntry(entry),
+        pw.SizedBox(height: 20),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.grey100,
+            borderRadius: pw.BorderRadius.circular(4),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('About this audit trail',
+                  style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey800)),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Each signatory verified their identity via a one-time code sent to their email address before signing. Signatures were recorded with timestamps and the IP address used to access the signing portal. This document was prepared and distributed via Lintel.',
+                style:
+                const pw.TextStyle(fontSize: 8, color: PdfColors.grey800),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   static pw.Widget _auditEntry(SignerAuditInfo e) {
@@ -284,7 +997,8 @@ class SaleAgreementPdf {
           _auditKv('Signature method', e.method),
           _auditKv(
               'Signed at',
-              DateFormat('d MMMM yyyy, HH:mm:ss').format(e.signedAt.toLocal())),
+              DateFormat('d MMMM yyyy, HH:mm:ss')
+                  .format(e.signedAt.toLocal())),
           if (e.otpVerifiedAt != null)
             _auditKv(
                 'OTP verified at',
@@ -318,124 +1032,9 @@ class SaleAgreementPdf {
     );
   }
 
-  /// Builds the unsigned-but-agency-signed PDF. Returns the bytes.
-  static Future<Uint8List> build(SaleAgreementInput i) async {
-    final doc = pw.Document(
-      title: 'Sale Agreement - ${i.contractNo}',
-      author: i.agencyName,
-    );
-
-    pw.MemoryImage? agencySig;
-    if (i.agencySignatureImage != null) {
-      agencySig = pw.MemoryImage(i.agencySignatureImage!);
-    }
-
-    doc.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.fromLTRB(48, 48, 48, 48),
-        header: (_) => _header(i),
-        footer: (ctx) => _footer(ctx, i),
-        build: (_) => [
-          _title(i),
-          pw.SizedBox(height: 18),
-          _parties(i),
-          pw.SizedBox(height: 14),
-          _recitals(i),
-          pw.SizedBox(height: 14),
-          _heading('1. Property'),
-          _propertyBlock(i),
-          pw.SizedBox(height: 10),
-          _heading('2. Purchase Price'),
-          _priceBlock(i),
-          pw.SizedBox(height: 10),
-          _heading('3. Payment Plan'),
-          _planBlock(i),
-          pw.SizedBox(height: 10),
-          _heading('4. Title & Transfer'),
-          _paragraph(
-              'Upon full payment of the Purchase Price stated in Clause 2 above, '
-                  'the Vendor shall execute and deliver to the Purchaser all '
-                  'documents required to vest legal title to the Property in the '
-                  'Purchaser, including but not limited to a Deed of Assignment '
-                  'and any registrable instrument required under the Land Use '
-                  'Act of Nigeria.'),
-          pw.SizedBox(height: 10),
-          _heading('5. Default'),
-          _paragraph(
-              'In the event that the Purchaser defaults on any scheduled '
-                  'installment and fails to remedy such default within thirty '
-                  '(30) days of written notice from the Vendor, the Vendor may '
-                  'at its sole discretion terminate this Agreement and refund '
-                  'the Purchaser any amounts already paid less an administrative '
-                  'charge not exceeding ten percent (10%) of the total amounts '
-                  'received.'),
-          pw.SizedBox(height: 10),
-          _heading('6. Force Majeure'),
-          _paragraph(
-              'Neither party shall be liable for any failure or delay in '
-                  'performance under this Agreement due to events outside the '
-                  'reasonable control of the party, including but not limited '
-                  'to acts of God, governmental orders, civil unrest, '
-                  'pandemics, or natural disasters.'),
-          pw.SizedBox(height: 10),
-          _heading('7. Governing Law'),
-          _paragraph(
-              'This Agreement shall be governed by and construed in '
-                  'accordance with the laws of the Federal Republic of Nigeria. '
-                  'Any dispute arising out of or in connection with this '
-                  'Agreement shall be referred to the courts of ${i.propertyState} State.'),
-          pw.SizedBox(height: 22),
-          _signatureBlocks(i, agencySig),
-          pw.SizedBox(height: 16),
-          _witnessBlocks(i),
-        ],
-      ),
-    );
-
-    return await doc.save();
-  }
-
-  // ------------ Layout helpers ------------
-
-  static pw.Widget _header(SaleAgreementInput i) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 8),
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(
-          bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
-        ),
-      ),
-      child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-        children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(i.agencyName,
-                  style: pw.TextStyle(
-                      fontSize: 13, fontWeight: pw.FontWeight.bold)),
-              if (i.agencyRcNumber != null && i.agencyRcNumber!.isNotEmpty)
-                pw.Text('RC ${i.agencyRcNumber}',
-                    style: const pw.TextStyle(
-                        fontSize: 9, color: PdfColors.grey700)),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text('CONTRACT REF',
-                  style: const pw.TextStyle(
-                      fontSize: 8, color: PdfColors.grey700)),
-              pw.Text(i.contractNo,
-                  style: pw.TextStyle(
-                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // ============================================================
+  // Footer
+  // ============================================================
 
   static pw.Widget _footer(pw.Context ctx, SaleAgreementInput i) {
     return pw.Container(
@@ -449,449 +1048,54 @@ class SaleAgreementPdf {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Generated by Lintel · ${_date.format(i.agreementDate)}',
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            'Contract ${i.contractNo}',
+            style: const pw.TextStyle(
+                fontSize: 8, color: PdfColors.grey600),
           ),
           pw.Text(
             'Page ${ctx.pageNumber} of ${ctx.pagesCount}',
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            style: const pw.TextStyle(
+                fontSize: 8, color: PdfColors.grey600),
           ),
         ],
       ),
     );
   }
 
-  static pw.Widget _title(SaleAgreementInput i) {
-    return pw.Center(
-      child: pw.Column(
-        children: [
-          pw.Text('SALE AGREEMENT',
-              style: pw.TextStyle(
-                fontSize: 18,
-                fontWeight: pw.FontWeight.bold,
-                letterSpacing: 1.5,
-              )),
-          pw.SizedBox(height: 4),
-          pw.Text(
-            'Made on this ${_dayOrdinal(i.agreementDate.day)} day of '
-                '${DateFormat('MMMM').format(i.agreementDate)}, ${i.agreementDate.year}',
-            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey800),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _parties(SaleAgreementInput i) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        color: PdfColors.grey100,
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          _partyLine('VENDOR', i.agencyName,
-              line2: i.agencyAddress,
-              line3: i.agencyRcNumber != null
-                  ? 'RC ${i.agencyRcNumber}'
-                  : null),
-          pw.SizedBox(height: 8),
-          _partyLine('PURCHASER', i.clientFullName,
-              line2: i.clientAddress,
-              line3: 'Phone: ${i.clientPhone}'),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _partyLine(String label, String name,
-      {String? line2, String? line3}) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(label,
-            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-        pw.Text(name,
-            style: pw.TextStyle(
-                fontSize: 11, fontWeight: pw.FontWeight.bold)),
-        if (line2 != null && line2.isNotEmpty)
-          pw.Text(line2, style: const pw.TextStyle(fontSize: 9)),
-        if (line3 != null && line3.isNotEmpty)
-          pw.Text(line3,
-              style: const pw.TextStyle(
-                  fontSize: 9, color: PdfColors.grey700)),
-      ],
-    );
-  }
-
-  static pw.Widget _recitals(SaleAgreementInput i) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        _heading('WHEREAS'),
-        _paragraph(
-            'The Vendor is the lawful owner of the property described herein '
-                'and is desirous of selling the same;'),
-        _paragraph(
-            'The Purchaser has agreed to buy the property under the terms '
-                'and conditions set out in this Agreement;'),
-        _paragraph(
-            'NOW THIS AGREEMENT WITNESSETH as follows:'),
-      ],
-    );
-  }
-
-  static pw.Widget _propertyBlock(SaleAgreementInput i) {
-    final size = i.propertySizeSqm != null
-        ? '${_money.format(i.propertySizeSqm)} sqm'
-        : 'Approx.';
-    return _paragraph(
-      'The property is described as "${i.propertyTitle}", '
-          '${i.unitLabel != null ? "(${i.unitLabel}) " : ""}'
-          'situate at ${i.propertyLocation}, ${i.propertyLga} LGA, '
-          '${i.propertyState} State, measuring $size, '
-          '(hereinafter referred to as "the Property").',
-    );
-  }
-
-  static pw.Widget _priceBlock(SaleAgreementInput i) {
-    final deposit = i.initialDeposit != null && i.initialDeposit! > 0
-        ? '. An initial deposit of NGN ${_money.format(i.initialDeposit)} '
-        'has been paid by the Purchaser, the receipt of which the Vendor '
-        'hereby acknowledges.'
-        : '.';
-    return _paragraph(
-      'The total purchase price of the Property is '
-          'NGN ${_money.format(i.totalPriceNgn)} '
-          '(${_inWords(i.totalPriceNgn)}) Naira only$deposit',
-    );
-  }
-
-  static pw.Widget _planBlock(SaleAgreementInput i) {
-    final months = i.planMonths != null
-        ? ' over ${i.planMonths} installment${i.planMonths == 1 ? "" : "s"}'
-        : '';
-    return _paragraph(
-      'The Purchaser shall pay the balance of the purchase price under a '
-          '${i.paymentPlanLabel} payment plan$months, commencing on '
-          '${_date.format(i.startDate)}. Time is of the essence in respect of '
-          'all payments due under this Agreement.',
-    );
-  }
-
-  static pw.Widget _signatureBlocks(
-      SaleAgreementInput i, pw.MemoryImage? agencySig) {
-    pw.MemoryImage? clientSig;
-    if (i.clientSignatureImage != null) {
-      clientSig = pw.MemoryImage(i.clientSignatureImage!);
+  static String _ordinal(int n) {
+    if (n >= 11 && n <= 13) return '${n}th';
+    switch (n % 10) {
+      case 1:
+        return '${n}st';
+      case 2:
+        return '${n}nd';
+      case 3:
+        return '${n}rd';
+      default:
+        return '${n}th';
     }
-
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        // VENDOR side
-        pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('SIGNED BY THE VENDOR',
-                  style: pw.TextStyle(
-                      fontSize: 9,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.grey700)),
-              pw.SizedBox(height: 6),
-              if (agencySig != null)
-                pw.Container(
-                  height: 50,
-                  alignment: pw.Alignment.centerLeft,
-                  child: pw.Image(agencySig, height: 50),
-                )
-              else
-                pw.Container(
-                  height: 50,
-                  decoration: const pw.BoxDecoration(
-                    border: pw.Border(
-                      bottom:
-                      pw.BorderSide(color: PdfColors.grey600, width: 0.5),
-                    ),
-                  ),
-                ),
-              pw.SizedBox(height: 4),
-              pw.Text(i.agencySignerName,
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              if (i.agencySignerTitle != null)
-                pw.Text(i.agencySignerTitle!,
-                    style: const pw.TextStyle(
-                        fontSize: 9, color: PdfColors.grey700)),
-              pw.Text('For: ${i.agencyName}',
-                  style: const pw.TextStyle(fontSize: 9)),
-              pw.Text('Date: ${_date.format(i.agreementDate)}',
-                  style: const pw.TextStyle(
-                      fontSize: 9, color: PdfColors.grey700)),
-            ],
-          ),
-        ),
-        pw.SizedBox(width: 24),
-        // PURCHASER side
-        pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text('SIGNED BY THE PURCHASER',
-                  style: pw.TextStyle(
-                      fontSize: 9,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.grey700)),
-              pw.SizedBox(height: 6),
-              if (clientSig != null)
-                pw.Container(
-                  height: 50,
-                  alignment: pw.Alignment.centerLeft,
-                  child: pw.Image(clientSig, height: 50),
-                )
-              else
-                pw.Container(
-                  height: 50,
-                  decoration: const pw.BoxDecoration(
-                    border: pw.Border(
-                      bottom:
-                      pw.BorderSide(color: PdfColors.grey600, width: 0.5),
-                    ),
-                  ),
-                ),
-              pw.SizedBox(height: 4),
-              pw.Text(i.clientFullName,
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              pw.Text('Phone: ${i.clientPhone}',
-                  style: const pw.TextStyle(fontSize: 9)),
-              if (i.clientEmail != null && i.clientEmail!.isNotEmpty)
-                pw.Text('Email: ${i.clientEmail}',
-                    style: const pw.TextStyle(fontSize: 9)),
-              pw.Text(
-                'Date: ${i.clientSignedAtDisplay ?? "____________________"}',
-                style: const pw.TextStyle(
-                    fontSize: 9, color: PdfColors.grey700),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _witnessBlocks(SaleAgreementInput i) {
-    pw.MemoryImage? vendorSig;
-    pw.MemoryImage? buyerSig;
-    if (i.vendorWitnessSignatureImage != null) {
-      vendorSig = pw.MemoryImage(i.vendorWitnessSignatureImage!);
-    }
-    if (i.buyerWitnessSignatureImage != null) {
-      buyerSig = pw.MemoryImage(i.buyerWitnessSignatureImage!);
-    }
-
-    return pw.Container(
-      padding: const pw.EdgeInsets.only(top: 12),
-      decoration: const pw.BoxDecoration(
-        border: pw.Border(
-          top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
-        ),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text('IN THE PRESENCE OF:',
-              style: pw.TextStyle(
-                  fontSize: 9,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.grey700)),
-          pw.SizedBox(height: 10),
-          pw.Row(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Expanded(
-                child: _witnessBlock(
-                  heading: "Vendor's Witness",
-                  name: i.vendorWitnessName,
-                  occupation: i.vendorWitnessOccupation,
-                  address: i.vendorWitnessAddress,
-                  signature: vendorSig,
-                  signedDate: i.vendorWitnessSignedAtDisplay,
-                ),
-              ),
-              pw.SizedBox(width: 24),
-              pw.Expanded(
-                child: _witnessBlock(
-                  heading: "Purchaser's Witness",
-                  name: i.buyerWitnessName ?? '____________________',
-                  occupation: i.buyerWitnessOccupation,
-                  address: i.buyerWitnessAddress,
-                  signature: buyerSig,
-                  signedDate: i.buyerWitnessSignedAtDisplay,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static pw.Widget _witnessBlock({
-    required String heading,
-    required String name,
-    String? occupation,
-    String? address,
-    pw.MemoryImage? signature,
-    String? signedDate,
-  }) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Text(heading,
-            style: pw.TextStyle(
-                fontSize: 9, fontWeight: pw.FontWeight.bold)),
-        pw.SizedBox(height: 4),
-        if (signature != null)
-          pw.Container(
-            height: 40,
-            alignment: pw.Alignment.centerLeft,
-            child: pw.Image(signature, height: 40),
-          )
-        else
-          pw.Container(
-            height: 40,
-            decoration: const pw.BoxDecoration(
-              border: pw.Border(
-                bottom: pw.BorderSide(color: PdfColors.grey600, width: 0.5),
-              ),
-            ),
-          ),
-        pw.SizedBox(height: 4),
-        _kv('Name:', name),
-        _kv('Occupation:', occupation ?? '____________________'),
-        _kv('Address:', address ?? '____________________'),
-        _kv('Date:', signedDate ?? '____________________'),
-      ],
-    );
-  }
-
-  static pw.Widget _kv(String k, String v) {
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.SizedBox(
-          width: 56,
-          child: pw.Text(k,
-              style: const pw.TextStyle(
-                  fontSize: 8, color: PdfColors.grey700)),
-        ),
-        pw.Expanded(
-          child: pw.Text(v,
-              style: const pw.TextStyle(fontSize: 9)),
-        ),
-      ],
-    );
-  }
-
-  static pw.Widget _heading(String text) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(top: 4, bottom: 4),
-      child: pw.Text(text,
-          style: pw.TextStyle(
-              fontSize: 11,
-              fontWeight: pw.FontWeight.bold,
-              letterSpacing: 0.5)),
-    );
-  }
-
-  static pw.Widget _paragraph(String text) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 3),
-      child: pw.Text(text,
-          textAlign: pw.TextAlign.justify,
-          style: const pw.TextStyle(fontSize: 10, lineSpacing: 2)),
-    );
-  }
-
-  static String _dayOrdinal(int day) {
-    if (day >= 11 && day <= 13) return '${day}th';
-    switch (day % 10) {
-      case 1: return '${day}st';
-      case 2: return '${day}nd';
-      case 3: return '${day}rd';
-      default: return '${day}th';
-    }
-  }
-
-  // Simple amount-in-words for amounts up to a few billion naira.
-  // Handles whole numbers only (no kobo).
-  static String _inWords(num amount) {
-    final n = amount.toInt();
-    if (n == 0) return 'Zero';
-
-    final units = [
-      '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven',
-      'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen',
-      'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'
-    ];
-    final tens = [
-      '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty',
-      'Sixty', 'Seventy', 'Eighty', 'Ninety'
-    ];
-
-    String belowHundred(int x) {
-      if (x < 20) return units[x];
-      final t = x ~/ 10;
-      final u = x % 10;
-      return tens[t] + (u > 0 ? ' ${units[u]}' : '');
-    }
-
-    String belowThousand(int x) {
-      final h = x ~/ 100;
-      final r = x % 100;
-      final hPart = h > 0 ? '${units[h]} Hundred' : '';
-      final rPart = r > 0 ? belowHundred(r) : '';
-      if (hPart.isNotEmpty && rPart.isNotEmpty) return '$hPart and $rPart';
-      return hPart + rPart;
-    }
-
-    final parts = <String>[];
-    final billion = n ~/ 1000000000;
-    final million = (n % 1000000000) ~/ 1000000;
-    final thousand = (n % 1000000) ~/ 1000;
-    final rest = n % 1000;
-
-    if (billion > 0) parts.add('${belowThousand(billion)} Billion');
-    if (million > 0) parts.add('${belowThousand(million)} Million');
-    if (thousand > 0) parts.add('${belowThousand(thousand)} Thousand');
-    if (rest > 0) parts.add(belowThousand(rest));
-
-    return parts.join(' ');
   }
 }
 
-
-class SignerAuditInfo {
-  final String role;            // 'Agency', 'Purchaser', 'Vendor witness', 'Buyer witness'
-  final String name;
-  final String? email;
-  final String method;          // 'drawn' | 'typed' | 'uploaded'
-  final DateTime signedAt;
-  final String? ip;
-  final DateTime? otpVerifiedAt;
-
-  SignerAuditInfo({
-    required this.role,
-    required this.name,
-    this.email,
-    required this.method,
-    required this.signedAt,
-    this.ip,
-    this.otpVerifiedAt,
+class _RenderableClause {
+  final String? number;
+  final String title;
+  final String body;
+  final String sectionKey;
+  _RenderableClause({
+    required this.title,
+    required this.body,
+    required this.sectionKey,
+    this.number,
   });
 }
-
+class _LoadedTemplate {
+  final List<_RenderableClause> clauses;
+  final String? customAppendix;
+  final ContractRenderContext ctx;
+  _LoadedTemplate({
+    required this.clauses,
+    required this.customAppendix,
+    required this.ctx,
+  });
+}

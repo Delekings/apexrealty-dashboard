@@ -24,9 +24,13 @@ const _nav = <_NavEntry>[
   _NavEntry('Contracts', Icons.assignment_outlined, '/contracts', section: 'Clients'),
   _NavEntry('Installments', Icons.payments_outlined, '/installments', badge: 3, section: 'Clients'),
 
-  _NavEntry('DocuSign', Icons.description_outlined, '/documents', section: 'Documents'),
-  _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures', section: 'Settings'),
+  _NavEntry('Campaigns', Icons.send_outlined, '/email/campaigns', section: 'Email'),
+  _NavEntry('Automations', Icons.auto_awesome_outlined, '/email/automations', section: 'Email'),
+  _NavEntry('Email settings', Icons.tune_outlined, '/email/settings', section: 'Email'),
 
+  _NavEntry('Signed contracts', Icons.assignment_turned_in_outlined, '/documents', section: 'Documents'),
+  _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures', section: 'Settings'),
+  _NavEntry('Contract template', Icons.description_outlined, '/settings/contract-template', section: 'Settings'),
   _NavEntry('Staff', Icons.badge_outlined, '/staff', section: 'Staff'),
 
   _NavEntry('Properties', Icons.home_work_outlined, '/properties', section: 'Properties'),

@@ -320,6 +320,7 @@ class DocumentsRepository {
     final agency = contract['agency'] as Map<String, dynamic>;
 
     final input = SaleAgreementInput(
+      contractId: doc['contract_id'] as String,  // ADD THIS
       agencyName: agency['name'] as String,
       agencyRcNumber: agency['rc_number'] as String?,
       agencyAddress: agency['address'] as String? ?? '',
