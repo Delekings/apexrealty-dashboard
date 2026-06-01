@@ -115,7 +115,8 @@ async function processAutomation(
 
         const fromName = cfg?.from_name ?? agency?.name ?? "Lintel";
         const replyTo = cfg?.reply_to_email ?? agency?.email ?? undefined;
-        const fromHeader = `${fromName} <onboarding@resend.dev>`;
+        const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        const fromHeader = `${fromName} <${fromEmail}>`;
 
         const { data: unsubRows } = await supabase
             .from("email_unsubscribes")

@@ -141,7 +141,9 @@ async function dispatchCampaign(
         }
 
         // 5. Dispatch with rate limiting
-        const fromHeader = `${campaign.from_name ?? "Lintel"} <onboarding@resend.dev>`;
+        // 5. Dispatch with rate limiting
+        const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        const fromHeader = `${campaign.from_name ?? "Lintel"} <${fromEmail}>`;
         let sent = 0;
         let failed = 0;
 
