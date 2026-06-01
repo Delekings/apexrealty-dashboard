@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/services/supabase_service.dart';
+import '../../features/auth/presentation/screens/accept_invite_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/auth/presentation/screens/sign_in_screen.dart';
@@ -13,6 +14,7 @@ import '../../features/auth/providers/auth_providers.dart';
 import '../../features/clients/presentation/screens/client_detail_screen.dart';
 import '../../features/clients/presentation/screens/clients_screen.dart';
 import '../../features/clients/presentation/screens/onboard_client_screen.dart';
+import '../../features/clients/presentation/screens/import_clients_screen.dart';
 import '../../features/contracts/presentation/screens/contract_detail_screen.dart';
 import '../../features/contracts/presentation/screens/contracts_screen.dart';
 import '../../features/contracts/presentation/screens/new_contract_screen.dart';
@@ -58,6 +60,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           path == '/signup' ||
           path == '/forgot-password' ||
           path == '/reset-password';
+          path == '/accept-invite';
+
+      // /accept-invite is special: the user is "logged in" via the invite
+// link but needs to set a password. Skip the usual redirect.
+      if (path == '/accept-invite') return null;
 
       // /reset-password is special: the user is "logged in" with a
       // recovery session, but we still want to show the screen so
@@ -84,6 +91,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signin',
         builder: (_, __) => const SignInScreen(),
+      ),
+      GoRoute(
+        path: '/accept-invite',
+        builder: (_, __) => const AcceptInviteScreen(),
       ),
       GoRoute(
         path: '/signup',
@@ -135,6 +146,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const OnboardClientScreen(),
           ),
           GoRoute(
+            path: '/clients/import',
+            builder: (_, __) => const ImportClientsScreen(),
+          ),
+          GoRoute(
             path: '/clients/:id',
             builder: (_, state) => ClientDetailScreen(
               clientId: state.pathParameters['id']!,
@@ -167,6 +182,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/contracts',
             builder: (_, __) => const ContractsScreen(),
           ),
+
+
+
           GoRoute(
             path: '/contracts/new',
             builder: (_, state) => NewContractScreen(
@@ -215,25 +233,33 @@ class _AuthChangeNotifier extends ChangeNotifier {
   _AuthChangeNotifier(Ref ref) {
     ref.listen(authStateProvider, (_, next) {
       notifyListeners();
-      // When the user clicks the password reset link in their email,
-      // Supabase fires a PASSWORD_RECOVERY event. Send them to the
-      // reset screen so they can pick a new password.
       next.whenData((authState) {
+        // Password recovery → reset screen
         if (authState.event == AuthChangeEvent.passwordRecovery) {
-          // Use the global router to navigate. We can't use context
-          // here because we're outside the widget tree.
-          _navigateToReset();
+          _navigate('/reset-password');
+          return;
+        }
+
+        // Invited user signed in → force them to /accept-invite
+        // until they set a password. We identify them by user metadata.
+        if (authState.event == AuthChangeEvent.signedIn) {
+          final user = authState.session?.user;
+          final meta = user?.userMetadata;
+          if (meta != null &&
+              meta['invited_by'] != null &&
+              meta['password_set'] != true) {
+            _navigate('/accept-invite');
+          }
         }
       });
     });
   }
 
-  void _navigateToReset() {
-    // Defer to next frame so router is mounted.
+  void _navigate(String path) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _routerCtx;
       if (ctx != null && ctx.mounted) {
-        ctx.go('/reset-password');
+        ctx.go(path);
       }
     });
   }

@@ -23,6 +23,7 @@ const _nav = <_NavEntry>[
   _NavEntry('All Clients', Icons.people_outline, '/clients', section: 'Clients'),
   _NavEntry('Contracts', Icons.assignment_outlined, '/contracts', section: 'Clients'),
   _NavEntry('Installments', Icons.payments_outlined, '/installments', badge: 3, section: 'Clients'),
+  _NavEntry('Import clients', Icons.upload_file_outlined, '/clients/import', section: 'Clients'),
 
   _NavEntry('Campaigns', Icons.send_outlined, '/email/campaigns', section: 'Email'),
   _NavEntry('Automations', Icons.auto_awesome_outlined, '/email/automations', section: 'Email'),

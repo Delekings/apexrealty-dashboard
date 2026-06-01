@@ -21,13 +21,11 @@ class ClientsRepository {
     final from = page * pageSize;
     final to = from + pageSize - 1;
 
-    // Start with the base select.
     var filterQuery = _c.from('clients').select('''
           *,
           agent:profiles!assigned_agent_id(id, full_name)
         ''');
 
-    // Apply filters BEFORE ordering / ranging.
     if (search != null && search.trim().isNotEmpty) {
       final s = search.trim();
       filterQuery = filterQuery.or(
@@ -38,10 +36,8 @@ class ClientsRepository {
       filterQuery = filterQuery.eq('assigned_agent_id', agentId);
     }
 
-    // Get total count for the same filters.
     final total = await _buildCountQuery(search: search, agentId: agentId);
 
-    // Now order and range.
     final rows = await filterQuery
         .order('created_at', ascending: false)
         .range(from, to);
@@ -115,8 +111,7 @@ class ClientsRepository {
     );
   }
 
-  /// Create a new client. agency_id is filled in by a database trigger
-  /// (or we set it here from the current profile — see below).
+  /// Create a new client.
   Future<String> create({
     required String agencyId,
     required String fullName,
@@ -158,7 +153,6 @@ class ClientsRepository {
 
     final newId = res['id'] as String;
 
-    // Log to activity feed
     await _c.from('activity_log').insert({
       'agency_id': agencyId,
       'entity_type': 'client',
@@ -173,6 +167,7 @@ class ClientsRepository {
   Future<void> update(String id, Map<String, dynamic> patch) async {
     await _c.from('clients').update(patch).eq('id', id);
   }
+
   /// Lightweight list of all clients in the agency, for picker dropdowns.
   Future<List<ClientListItem>> listAllForPicker() async {
     final rows = await _c
@@ -187,6 +182,7 @@ class ClientsRepository {
         .map((r) => ClientListItem.fromMap(r as Map<String, dynamic>))
         .toList();
   }
+
   /// Fetch the list of agents in the current agency (for dropdowns).
   Future<List<Profile>> listAgents() async {
     final rows = await _c
@@ -196,6 +192,23 @@ class ClientsRepository {
         .inFilter('role', ['agent', 'manager', 'agency_admin'])
         .order('full_name');
     return (rows as List).map((r) => Profile.fromMap(r)).toList();
+  }
+
+  /// Bulk-imports clients via the `bulk_import_clients` RPC. Returns
+  /// per-row results so the UI can show which rows were inserted vs
+  /// skipped as duplicates vs failed.
+  Future<List<ClientImportResultRow>> bulkImport(
+      List<Map<String, dynamic>> rows,
+      ) async {
+    final res = await _c.rpc(
+      'bulk_import_clients',
+      params: {'p_rows': rows},
+    );
+
+    if (res is! List) return [];
+    return res
+        .map((r) => ClientImportResultRow.fromMap(r as Map<String, dynamic>))
+        .toList();
   }
 }
 
@@ -321,4 +334,33 @@ class PaymentSummary {
     channel: m['channel'] as String,
     paidAt: DateTime.parse(m['paid_at'] as String),
   );
+}
+
+/// Result of a single row's import attempt, returned by the
+/// `bulk_import_clients` Postgres RPC.
+class ClientImportResultRow {
+  final int rowIndex;
+  final String status; // inserted | duplicate_email | duplicate_phone | error
+  final String? clientId;
+  final String? message;
+
+  ClientImportResultRow({
+    required this.rowIndex,
+    required this.status,
+    this.clientId,
+    this.message,
+  });
+
+  factory ClientImportResultRow.fromMap(Map<String, dynamic> m) =>
+      ClientImportResultRow(
+        rowIndex: (m['row_index'] as num).toInt(),
+        status: m['status'] as String,
+        clientId: m['client_id'] as String?,
+        message: m['message'] as String?,
+      );
+
+  bool get isSuccess => status == 'inserted';
+  bool get isDuplicate =>
+      status == 'duplicate_email' || status == 'duplicate_phone';
+  bool get isError => status == 'error';
 }
