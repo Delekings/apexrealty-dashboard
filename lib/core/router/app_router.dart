@@ -242,3 +242,9 @@ class _AuthChangeNotifier extends ChangeNotifier {
 /// Captured from AppShell on first build so we can navigate from
 /// outside the widget tree (e.g. in response to auth events).
 BuildContext? _routerCtx;
+/// Called from AppShell.build() to capture a routed context for use
+/// in auth-event handlers (e.g. password recovery) that fire outside
+/// the widget tree.
+void captureRouterContext(BuildContext context) {
+  _routerCtx ??= context;
+}

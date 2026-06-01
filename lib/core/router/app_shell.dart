@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-
 import '../../features/auth/providers/auth_providers.dart';
+import 'app_router.dart' show captureRouterContext;
 import '../theme/app_theme.dart';
 
 class _NavEntry {
@@ -42,6 +42,10 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Capture this context so we can navigate from outside the widget
+    // tree (e.g. when Supabase fires a PASSWORD_RECOVERY event).
+    captureRouterContext(context);
+
     final profile = ref.watch(currentProfileProvider).valueOrNull;
     final width = MediaQuery.of(context).size.width;
     final isWide = width >= 900;
@@ -156,7 +160,6 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final currentPath = GoRouterState.of(context).uri.path;
 
-    // Group nav entries by section
     final grouped = <String, List<_NavEntry>>{};
     for (final n in _nav) {
       grouped.putIfAbsent(n.section ?? 'Other', () => []).add(n);

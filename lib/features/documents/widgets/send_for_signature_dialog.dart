@@ -24,7 +24,7 @@ class SendForSignatureDialog extends ConsumerStatefulWidget {
   ConsumerState<SendForSignatureDialog> createState() =>
       _SendForSignatureDialogState();
 }
-
+List<({String email, String role, bool success})>? _emailResults;
 class _SendForSignatureDialogState
     extends ConsumerState<SendForSignatureDialog> {
   AgencySignature? _selectedSignature;
@@ -54,10 +54,9 @@ class _SendForSignatureDialogState
       setState(() => _error = 'Please select an agency signature');
       return;
     }
-    if (_vendorName.text.trim().isEmpty ||
-        !_vendorEmail.text.contains('@')) {
-      setState(() => _error =
-      "Vendor's witness needs a full name and a valid email");
+    if (_vendorName.text.trim().isEmpty || !_vendorEmail.text.contains('@')) {
+      setState(() =>
+      _error = "Vendor's witness needs a full name and a valid email");
       return;
     }
     if (!_buyerWitnessByClient &&
@@ -80,20 +79,15 @@ class _SendForSignatureDialogState
         throw Exception('No agency on your profile');
       }
 
-      // 1. Get the contract reference
       final detail = widget.contractDetail;
       final c = detail.contract;
 
-      // 2. Snapshot the current template state for this contract
-      //    (so future template edits don't retroactively change in-flight contracts)
       await ref.read(_templatesRepoProvider).createSnapshot(c.id);
 
-      // 3. Download the agency signature image bytes
       final sigBytes = await ref
           .read(signaturesRepoProvider)
           .downloadImage(_selectedSignature!.signatureImagePath);
 
-      // 4. Build the PDF using the snapshotted template
       final pdfBytes = await SaleAgreementPdf.build(SaleAgreementInput(
         contractId: c.id,
         agencyName: detail.agencyName ?? 'Agency',
@@ -125,15 +119,10 @@ class _SendForSignatureDialogState
             : _buyerWitnessName.text.trim(),
       ));
 
-      // 5. Upload to storage
-      final pdfPath = await ref
-          .read(documentsRepoProvider)
-          .uploadUnsignedPdf(
+      final pdfPath = await ref.read(documentsRepoProvider).uploadUnsignedPdf(
           agencyId: profile!.agencyId!, pdfBytes: pdfBytes);
 
-      // 6. Create the signature request
-      final result =
-      await ref.read(documentsRepoProvider).createSignatureRequest(
+      final result = await ref.read(documentsRepoProvider).createSignatureRequest(
         contractId: c.id,
         agencySignatureId: _selectedSignature!.id,
         unsignedPdfPath: pdfPath,
@@ -147,11 +136,24 @@ class _SendForSignatureDialogState
             : _buyerWitnessEmail.text.trim(),
       );
 
-      // Refresh contract detail provider
+      // === NEW: send the branded signing emails ===
+      final propertyLabel =
+          '${detail.propertyTitle}, ${detail.propertyLocation}';
+      final emailResults = await ref.read(documentsRepoProvider).sendSigningEmails(
+        contractId: c.id,
+        agencyName: detail.agencyName ?? 'Agency',
+        propertyLabel: propertyLabel,
+        contractNo: c.contractNo,
+        appOrigin: Uri.base.origin,
+      );
+
       ref.invalidate(contractDetailProvider(c.id));
       ref.invalidate(contractSignatureProgressProvider(c.id));
 
-      setState(() => _result = result);
+      setState(() {
+        _result = result;
+        _emailResults = emailResults;
+      });
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -390,68 +392,112 @@ class _SendForSignatureDialogState
   Widget _successView() {
     final origin = Uri.base.origin;
     final signLink = '$origin/#/sign/${_result!.clientSigningToken}';
+    final allSent = _emailResults?.every((r) => r.success) ?? false;
+    final anySent = _emailResults?.any((r) => r.success) ?? false;
 
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Center(
-                child: Icon(Icons.check_circle,
-                    size: 40, color: AppColors.brand),
-              ),
-              const SizedBox(height: 8),
-              const Center(
-                child: Text('Sent for signature',
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
-              ),
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  'The contract has been prepared and the client will receive it at ${_result!.clientEmail}.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.muted),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Icon(
+                    allSent ? Icons.check_circle : Icons.info,
+                    size: 40,
+                    color: allSent ? AppColors.brand : AppColors.warn,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.bg2,
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    allSent
+                        ? 'Sent for signature'
+                        : anySent
+                        ? 'Partially sent'
+                        : 'Created, emails failed',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Signing link (for testing in dev):',
-                        style: TextStyle(
-                            fontSize: 11, color: AppColors.muted)),
-                    const SizedBox(height: 4),
-                    SelectableText(signLink,
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontFamily: 'monospace',
-                            color: AppColors.brand)),
-                  ],
+                const SizedBox(height: 12),
+                if (_emailResults != null && _emailResults!.isNotEmpty) ...[
+                  const Text('Signing emails:',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.muted)),
+                  const SizedBox(height: 6),
+                  for (final r in _emailResults!)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Icon(
+                            r.success
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline,
+                            size: 14,
+                            color: r.success
+                                ? AppColors.brand
+                                : AppColors.danger,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${_roleLabel(r.role)} — ${r.email}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.bg2,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Direct signing link (copy/share manually):',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.muted)),
+                      const SizedBox(height: 4),
+                      SelectableText(signLink,
+                          style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: AppColors.brand)),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Done'),
-              ),
-            ],
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  String _roleLabel(String role) => switch (role) {
+    'client' => 'Purchaser',
+    'vendor_witness' => "Vendor's witness",
+    'buyer_witness' => "Buyer's witness",
+    _ => role,
+  };
 
   String _planLabel(PaymentPlan p) => switch (p) {
     PaymentPlan.outright => 'Outright',

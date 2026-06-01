@@ -162,7 +162,6 @@ class DocumentsRepository {
   /// Fetches signature progress for a contract — the latest document
   /// and all its signers in order.
   Future<SignatureProgress?> progressForContract(String contractId) async {
-    // Find the latest document for this contract
     final docRows = await _c
         .from('documents')
         .select(
@@ -171,10 +170,9 @@ class DocumentsRepository {
         .order('created_at', ascending: false)
         .limit(1);
 
-    if (docRows is! List || docRows.isEmpty) return null;
-    final doc = docRows.first as Map<String, dynamic>;
+    if (docRows.isEmpty) return null;
+    final doc = docRows.first;
 
-    // Look up agency signer name (if present)
     String? agencySignerName;
     if (doc['agency_signature_id'] != null) {
       final sig = await _c
@@ -185,15 +183,14 @@ class DocumentsRepository {
       agencySignerName = sig?['signer_name'] as String?;
     }
 
-    // Pull all signers in signer_order
     final signerRows = await _c
         .from('document_signers')
         .select()
         .eq('document_id', doc['id'])
         .order('signer_order');
 
-    final signers = (signerRows as List)
-        .map((s) => SignerInfo.fromMap(s as Map<String, dynamic>))
+    final signers = signerRows
+        .map<SignerInfo>((s) => SignerInfo.fromMap(s as Map<String, dynamic>))
         .toList();
 
     return SignatureProgress(
@@ -217,7 +214,6 @@ class DocumentsRepository {
     required String documentId,
     required String agencyId,
   }) async {
-    // 1. Fetch the document
     final doc = await _c.from('documents').select('''
           id, status, contract_id, agency_signature_id,
           agency_signed_at, current_pdf_path
@@ -234,7 +230,6 @@ class DocumentsRepository {
         .eq('document_id', documentId)
         .order('signer_order');
 
-    // 2. Fetch contract + client + property + agency
     final contract = await _c.from('contracts').select('''
           *,
           client:clients(id, full_name, phone, email, address),
@@ -242,14 +237,12 @@ class DocumentsRepository {
           agency:agencies(id, name, rc_number, address, logo_url)
         ''').eq('id', doc['contract_id']).single();
 
-    // 3. Fetch the agency signature
     final agencySig = await _c
         .from('agency_signatures')
         .select()
         .eq('id', doc['agency_signature_id'])
         .single();
 
-    // 4. Download all signature images
     final agencyBytes = await _c.storage
         .from('agency-signatures')
         .download(agencySig['signature_image_path']);
@@ -258,7 +251,7 @@ class DocumentsRepository {
     Uint8List? vendorWitnessBytes;
     Uint8List? buyerWitnessBytes;
 
-    for (final s in signers as List) {
+    for (final s in signers) {
       final m = s as Map<String, dynamic>;
       if (m['signature_path'] == null) continue;
       final bytes = await _c.storage
@@ -278,7 +271,6 @@ class DocumentsRepository {
       }
     }
 
-    // 5. Build the audit list
     final auditEntries = <SignerAuditInfo>[
       SignerAuditInfo(
         role: 'Vendor (Agency)',
@@ -304,7 +296,6 @@ class DocumentsRepository {
       ));
     }
 
-    // 6. Find witness rows for the PDF input
     final clientRow = signers
         .firstWhere((s) => s['signer_role'] == 'client') as Map<String, dynamic>;
     final vendorWitnessRow = signers
@@ -314,13 +305,12 @@ class DocumentsRepository {
         .firstWhere((s) => s['signer_role'] == 'buyer_witness')
     as Map<String, dynamic>;
 
-    // 7. Build the input for the PDF
     final client = contract['client'] as Map<String, dynamic>;
     final property = contract['property'] as Map<String, dynamic>;
     final agency = contract['agency'] as Map<String, dynamic>;
 
     final input = SaleAgreementInput(
-      contractId: doc['contract_id'] as String,  // ADD THIS
+      contractId: doc['contract_id'] as String,
       agencyName: agency['name'] as String,
       agencyRcNumber: agency['rc_number'] as String?,
       agencyAddress: agency['address'] as String? ?? '',
@@ -367,13 +357,11 @@ class DocumentsRepository {
           : null,
     );
 
-    // 8. Render the PDF
     final pdfBytes = await SaleAgreementPdf.buildSignedWithAudit(
       input: input,
       auditEntries: auditEntries,
     );
 
-    // 9. Upload to signed-documents bucket
     final filename = 'signed_${DateTime.now().millisecondsSinceEpoch}.pdf';
     final path = '$agencyId/$filename';
     await _c.storage.from('signed-documents').uploadBinary(
@@ -385,7 +373,6 @@ class DocumentsRepository {
       ),
     );
 
-    // 10. Update the document row
     await _c.from('documents').update({
       'signed_pdf_path': path,
       'status': 'completed',
@@ -399,6 +386,50 @@ class DocumentsRepository {
     return await _c.storage
         .from('signed-documents')
         .createSignedUrl(storagePath, 3600);
+  }
+
+  /// After createSignatureRequest, sends each signer their branded
+  /// signing email. Returns a list of (email, role, success) tuples so
+  /// the caller can show which sends worked.
+  Future<List<({String email, String role, bool success})>> sendSigningEmails({
+    required String contractId,
+    required String agencyName,
+    required String propertyLabel,
+    required String contractNo,
+    required String appOrigin,
+  }) async {
+    final progress = await progressForContract(contractId);
+    if (progress == null) return [];
+
+    final results = <({String email, String role, bool success})>[];
+
+    for (final signer in progress.signers) {
+      if (signer.email == null || signer.email!.isEmpty) continue;
+      if (signer.signingToken == null) continue;
+
+      final signingUrl = '$appOrigin/#/sign/${signer.signingToken}';
+
+      try {
+        await _c.functions.invoke(
+          'send-signing-request',
+          body: {
+            'to_email': signer.email,
+            'to_name': signer.fullName ?? signer.email,
+            'signing_url': signingUrl,
+            'signer_role': signer.signerRole,
+            'agency_name': agencyName,
+            'property_label': propertyLabel,
+            'contract_no': contractNo,
+            'expires_at': progress.expiresAt?.toIso8601String(),
+          },
+        );
+        results.add((email: signer.email!, role: signer.signerRole, success: true));
+      } catch (_) {
+        results.add((email: signer.email!, role: signer.signerRole, success: false));
+      }
+    }
+
+    return results;
   }
 
   String _roleLabel(String role) => switch (role) {
@@ -420,18 +451,8 @@ class DocumentsRepository {
 
   String _formatDate(DateTime d) {
     const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
@@ -441,6 +462,7 @@ final documentsRepoProvider = Provider((_) => DocumentsRepository());
 
 final contractSignatureProgressProvider =
 FutureProvider.family<SignatureProgress?, String>(
-        (ref, contractId) async {
-      return ref.read(documentsRepoProvider).progressForContract(contractId);
-    });
+      (ref, contractId) async {
+    return ref.read(documentsRepoProvider).progressForContract(contractId);
+  },
+);
