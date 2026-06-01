@@ -44,11 +44,9 @@ class AuthRepository {
     await _c.auth.signInWithPassword(email: email, password: password);
   }
 
-  /// Creates a new auth user AND sets up their agency + profile.
-  ///
-  /// Returns a [SignUpResult] indicating whether the user has a session
-  /// (and was therefore set up immediately) or still needs to confirm
-  /// their email.
+  /// Creates a new auth user. The agency + profile are created
+  /// automatically by the `on_auth_user_created` Postgres trigger on
+  /// `auth.users`, reading the agency/profile data from `raw_user_meta_data`.
   Future<SignUpResult> signUpAgencyAdmin({
     required String email,
     required String password,
@@ -62,55 +60,62 @@ class AuthRepository {
     final res = await _c.auth.signUp(
       email: email,
       password: password,
+      data: {
+        'full_name': fullName,
+        'phone': phone,
+        'agency_name': agencyName,
+        'agency_phone': agencyPhone,
+        'agency_state': agencyState,
+        if (agencyRcNumber != null && agencyRcNumber.trim().isNotEmpty)
+          'agency_rc_number': agencyRcNumber,
+      },
     );
 
     if (res.user == null) {
-      // This shouldn't happen — Supabase returns either a user or throws
       throw Exception('Could not create account. Please try again.');
     }
 
-    // If we got a session, the user is signed in right now and we can
-    // immediately set up their agency + profile.
     if (res.session != null) {
       try {
-        await _c.rpc('complete_signup', params: {
-          'p_full_name': fullName,
-          'p_phone': phone,
-          'p_agency_name': agencyName,
-          'p_agency_phone': agencyPhone,
-          'p_agency_state': agencyState,
-          'p_agency_rc_number': agencyRcNumber,
-        });
-      } catch (e) {
-        // The auth user was created but the agency setup failed.
-        // We re-throw with a clearer message so the UI knows.
-        throw Exception(
-          'Account created but agency setup failed. '
-              'Please contact support. (Details: $e)',
-        );
-      }
-      return SignUpResult(
-        needsEmailConfirmation: false,
-        email: email,
-      );
+        final existing = await _c
+            .from('profiles')
+            .select('id')
+            .eq('id', res.user!.id)
+            .maybeSingle();
+        if (existing == null) {
+          await _c.rpc('complete_signup', params: {
+            'p_full_name': fullName,
+            'p_phone': phone,
+            'p_agency_name': agencyName,
+            'p_agency_phone': agencyPhone,
+            'p_agency_state': agencyState,
+            'p_agency_rc_number': agencyRcNumber,
+          });
+        }
+      } catch (_) {}
+      return SignUpResult(needsEmailConfirmation: false, email: email);
     }
 
-    // No session means email confirmation is required. The auth user
-    // was created, but we can't run complete_signup until they confirm
-    // and log in (because the RPC needs auth.uid()).
-    //
-    // For now we return a pending result so the UI can show the
-    // "check your email" screen. The user will need to confirm, sign in,
-    // and then we'll set up their agency on first login.
-    return SignUpResult(
-      needsEmailConfirmation: true,
-      email: email,
+    return SignUpResult(needsEmailConfirmation: true, email: email);
+  }
+
+  /// Sends a password reset email. The link in the email will redirect
+  /// the user to /reset-password where they set a new password.
+  Future<void> requestPasswordReset(String email) async {
+    await _c.auth.resetPasswordForEmail(
+      email.trim(),
+      redirectTo: 'https://app.getlintel.org/#/reset-password',
     );
   }
 
-  /// Completes the agency + profile setup for a user who confirmed their
-  /// email and is now signing in for the first time. Idempotent — safe
-  /// to call repeatedly.
+  /// Updates the password for the currently-recovering user. Called
+  /// from the /reset-password screen after the user lands there from
+  /// the email link (Supabase fires a PASSWORD_RECOVERY event which
+  /// puts them in a recovery session that allows updateUser).
+  Future<void> updatePassword(String newPassword) async {
+    await _c.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
   Future<void> completeSignupIfNeeded({
     required String fullName,
     required String phone,
@@ -122,13 +127,12 @@ class AuthRepository {
     final user = SupabaseService.currentUser;
     if (user == null) return;
 
-    // Check if profile already exists
     final existing = await _c
         .from('profiles')
         .select('id')
         .eq('id', user.id)
         .maybeSingle();
-    if (existing != null) return; // Already set up
+    if (existing != null) return;
 
     await _c.rpc('complete_signup', params: {
       'p_full_name': fullName,

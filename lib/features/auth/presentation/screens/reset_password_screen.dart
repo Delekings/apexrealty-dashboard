@@ -1,4 +1,4 @@
-// lib/features/auth/presentation/screens/sign_in_screen.dart
+// lib/features/auth/presentation/screens/reset_password_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,29 +6,46 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../providers/auth_providers.dart';
 
-class SignInScreen extends ConsumerStatefulWidget {
-  const SignInScreen({super.key});
+class ResetPasswordScreen extends ConsumerStatefulWidget {
+  const ResetPasswordScreen({super.key});
 
   @override
-  ConsumerState<SignInScreen> createState() => _SignInScreenState();
+  ConsumerState<ResetPasswordScreen> createState() =>
+      _ResetPasswordScreenState();
 }
 
-class _SignInScreenState extends ConsumerState<SignInScreen> {
-  final _email = TextEditingController();
+class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
   final _password = TextEditingController();
+  final _confirm = TextEditingController();
   bool _loading = false;
   String? _error;
 
   Future<void> _submit() async {
+    final pwd = _password.text;
+    final cnf = _confirm.text;
+
+    if (pwd.length < 8) {
+      setState(() => _error = 'Password must be at least 8 characters');
+      return;
+    }
+    if (pwd != cnf) {
+      setState(() => _error = 'Passwords don\'t match');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      await ref.read(authRepositoryProvider).signIn(
-        _email.text.trim(),
-        _password.text,
+      await ref.read(authRepositoryProvider).updatePassword(pwd);
+      if (!mounted) return;
+      // Supabase signs the user in automatically after updateUser.
+      // Push them to the dashboard.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password updated. Welcome back!')),
       );
+      context.go('/');
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -58,11 +75,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         color: AppColors.brand,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.home_rounded, color: Colors.white, size: 20),
+                      child: const Icon(Icons.home_rounded,
+                          color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 10),
                     const Text('Lin',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w600)),
                     const Text('tel',
                         style: TextStyle(
                             fontSize: 20,
@@ -71,38 +90,33 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   ],
                 ),
                 const SizedBox(height: 32),
-                const Text('Sign in',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email'),
+                const Text('Set a new password',
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Choose a new password for your Lintel account. Must be at least 8 characters.',
+                  style: TextStyle(
+                      fontSize: 13, color: AppColors.muted, height: 1.4),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _password,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  onSubmitted: (_) => _submit(),
+                  decoration: const InputDecoration(labelText: 'New password'),
                 ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: GestureDetector(
-                    onTap: () => context.go('/forgot-password'),
-                    child: const Text(
-                      'Forgot password?',
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.brand,
-                          fontWeight: FontWeight.w500),
-                    ),
-                  ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _confirm,
+                  obscureText: true,
+                  decoration:
+                  const InputDecoration(labelText: 'Confirm new password'),
+                  onSubmitted: (_) => _submit(),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: AppColors.danger)),
+                  Text(_error!,
+                      style: const TextStyle(color: AppColors.danger)),
                 ],
                 const SizedBox(height: 20),
                 FilledButton(
@@ -113,25 +127,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                       width: 18,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
-                      : const Text('Sign in'),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text("New to Lintel? ",
-                        style: TextStyle(fontSize: 13, color: AppColors.muted)),
-                    GestureDetector(
-                      onTap: () => context.go('/signup'),
-                      child: const Text(
-                        'Create an account',
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.brand,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
+                      : const Text('Update password'),
                 ),
               ],
             ),

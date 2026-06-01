@@ -2,8 +2,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/services/supabase_service.dart';
+import '../../features/auth/presentation/screens/forgot_password_screen.dart';
+import '../../features/auth/presentation/screens/reset_password_screen.dart';
 import '../../features/auth/presentation/screens/sign_in_screen.dart';
 import '../../features/auth/presentation/screens/sign_up_screen.dart';
 import '../../features/auth/providers/auth_providers.dart';
@@ -28,19 +31,18 @@ import '../../features/settings/presentation/screens/contract_template_screen.da
 import '../../features/email/presentation/screens/email_settings_screen.dart';
 import '../../features/email/presentation/screens/email_campaigns_screen.dart';
 import '../../features/email/presentation/screens/email_automations_screen.dart';
-import 'package:flutter/material.dart';
 
 import 'app_shell.dart';
 
 /// The single source of truth for navigation.
 ///
 /// Public routes (no auth required):
-///   /signin, /signup, /sign/:token
+///   /signin, /signup, /sign/:token, /forgot-password, /reset-password
 ///
 /// All other routes are authenticated and rendered inside [AppShell]
 /// (sidebar + topbar). The redirect logic below enforces this.
 final routerProvider = Provider<GoRouter>((ref) {
-  // Rebuild router when auth state flips (sign in / sign out).
+  // Rebuild router when auth state flips (sign in / sign out / recovery).
   ref.watch(authStateProvider);
 
   return GoRouter(
@@ -53,11 +55,21 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isPublic = path.startsWith('/sign/') ||
           path == '/signin' ||
-          path == '/signup';
+          path == '/signup' ||
+          path == '/forgot-password' ||
+          path == '/reset-password';
+
+      // /reset-password is special: the user is "logged in" with a
+      // recovery session, but we still want to show the screen so
+      // they can set a new password. Skip the usual redirect.
+      if (path == '/reset-password') return null;
 
       if (isPublic) {
         // Already signed in? Skip the auth screens.
-        if (loggedIn && (path == '/signin' || path == '/signup')) {
+        if (loggedIn &&
+            (path == '/signin' ||
+                path == '/signup' ||
+                path == '/forgot-password')) {
           return '/';
         }
         return null;
@@ -74,23 +86,30 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const SignInScreen(),
       ),
       GoRoute(
-        path: '/email/automations',
-        builder: (_, __) => const EmailAutomationsScreen(),
-      ),
-
-      GoRoute(
         path: '/signup',
         builder: (_, __) => const SignUpScreen(),
       ),
       GoRoute(
-        path: '/email/campaigns',
-        builder: (_, __) => const EmailCampaignsScreen(),
+        path: '/forgot-password',
+        builder: (_, __) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: '/reset-password',
+        builder: (_, __) => const ResetPasswordScreen(),
       ),
       GoRoute(
         path: '/sign/:token',
         builder: (_, state) => SigningScreen(
           token: state.pathParameters['token']!,
         ),
+      ),
+      GoRoute(
+        path: '/email/automations',
+        builder: (_, __) => const EmailAutomationsScreen(),
+      ),
+      GoRoute(
+        path: '/email/campaigns',
+        builder: (_, __) => const EmailCampaignsScreen(),
       ),
 
       // -------------------- AUTHENTICATED --------------------
@@ -122,15 +141,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
-
           GoRoute(
             path: '/settings/contract-template',
             builder: (_, __) => const ContractTemplateScreen(),
-
           ),
+
           // Properties
-
-
           GoRoute(
             path: '/properties',
             builder: (_, __) => const PropertiesScreen(),
@@ -193,9 +209,36 @@ final routerProvider = Provider<GoRouter>((ref) {
 });
 
 /// Notifies the router whenever the Supabase auth state changes,
-/// so the redirect logic re-runs.
+/// so the redirect logic re-runs. Also listens for PASSWORD_RECOVERY
+/// events and pushes the user to /reset-password.
 class _AuthChangeNotifier extends ChangeNotifier {
   _AuthChangeNotifier(Ref ref) {
-    ref.listen(authStateProvider, (_, __) => notifyListeners());
+    ref.listen(authStateProvider, (_, next) {
+      notifyListeners();
+      // When the user clicks the password reset link in their email,
+      // Supabase fires a PASSWORD_RECOVERY event. Send them to the
+      // reset screen so they can pick a new password.
+      next.whenData((authState) {
+        if (authState.event == AuthChangeEvent.passwordRecovery) {
+          // Use the global router to navigate. We can't use context
+          // here because we're outside the widget tree.
+          _navigateToReset();
+        }
+      });
+    });
+  }
+
+  void _navigateToReset() {
+    // Defer to next frame so router is mounted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _routerCtx;
+      if (ctx != null && ctx.mounted) {
+        ctx.go('/reset-password');
+      }
+    });
   }
 }
+
+/// Captured from AppShell on first build so we can navigate from
+/// outside the widget tree (e.g. in response to auth events).
+BuildContext? _routerCtx;
