@@ -65,7 +65,21 @@ class BookingsRepository {
         .map((r) => BookingOverview.fromMap(r as Map<String, dynamic>))
         .toList();
   }
-
+  /// Past bookings: checked out, cancelled, or no-show. Last 30 days by default.
+  Future<List<BookingOverview>> listPast({int daysBack = 30}) async {
+    final since = DateTime.now().subtract(Duration(days: daysBack));
+    final sinceStr = since.toIso8601String().split('T').first;
+    final rows = await _c
+        .from('bookings_overview')
+        .select()
+        .inFilter('status', ['checked_out', 'cancelled', 'no_show'])
+        .gte('check_out_date', sinceStr)
+        .order('check_out_date', ascending: false)
+        .limit(100);
+    return (rows as List)
+        .map((r) => BookingOverview.fromMap(r as Map<String, dynamic>))
+        .toList();
+  }
   Future<BookingOverview?> getById(String id) async {
     final row = await _c
         .from('bookings_overview')
@@ -232,4 +246,8 @@ FutureProvider<List<BookingOverview>>((ref) async {
 final bookingDetailProvider =
 FutureProvider.family<BookingOverview?, String>((ref, id) async {
   return ref.read(bookingsRepoProvider).getById(id);
+});
+final pastBookingsProvider =
+FutureProvider<List<BookingOverview>>((ref) async {
+  return ref.read(bookingsRepoProvider).listPast();
 });

@@ -30,6 +30,7 @@ const _nav = <_NavEntry>[
   _NavEntry('Email settings', Icons.tune_outlined, '/email/settings', section: 'Email'),
 
   _NavEntry('Signed contracts', Icons.assignment_turned_in_outlined, '/documents', section: 'Documents'),
+  _NavEntry('Bookings', Icons.event_outlined, '/bookings', section: 'Shortlet'),
   _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures', section: 'Settings'),
   _NavEntry('Contract template', Icons.description_outlined, '/settings/contract-template', section: 'Settings'),
   _NavEntry('Staff', Icons.badge_outlined, '/staff', section: 'Staff'),

@@ -31,6 +31,8 @@ import '../../features/properties/presentation/screens/new_property_screen.dart'
 import '../../features/settings/presentation/screens/contract_template_screen.dart';
 import '../../features/email/presentation/screens/email_settings_screen.dart';
 import '../../features/email/presentation/screens/email_campaigns_screen.dart';
+import '../../features/shortlet/presentation/screens/bookings_screen.dart';
+import '../../features/shortlet/presentation/screens/new_booking_screen.dart';
 import '../../features/email/presentation/screens/email_automations_screen.dart';
 
 import 'app_shell.dart';
@@ -230,6 +232,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/staff',
             builder: (_, __) => const StaffScreen(),
+          ),
+          GoRoute(
+            path: '/bookings',
+            builder: (_, __) => const BookingsScreen(),
+          ),
+          GoRoute(
+            path: '/bookings/new',
+            builder: (_, __) => const NewBookingScreen(),
           ),
         ],
       ),
