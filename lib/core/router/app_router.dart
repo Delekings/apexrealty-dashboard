@@ -21,7 +21,6 @@ import '../../features/contracts/presentation/screens/new_contract_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/documents/presentation/screens/documents_screen.dart';
 import '../../features/installments/presentation/screens/installments_screen.dart';
-import '../../features/properties/presentation/screens/add_property_screen.dart';
 import '../../features/properties/presentation/screens/properties_screen.dart';
 import '../../features/properties/presentation/screens/property_detail_screen.dart';
 import '../../features/reminders/presentation/screens/reminders_screen.dart';
@@ -39,10 +38,11 @@ import 'app_shell.dart';
 /// The single source of truth for navigation.
 ///
 /// Public routes (no auth required):
-///   /signin, /signup, /sign/:token, /forgot-password, /reset-password
+///   /signin, /signup, /sign/:token, /forgot-password,
+///   /reset-password, /accept-invite
 ///
 /// All other routes are authenticated and rendered inside [AppShell]
-/// (sidebar + topbar). The redirect logic below enforces this.
+/// (sidebar + topbar).
 final routerProvider = Provider<GoRouter>((ref) {
   // Rebuild router when auth state flips (sign in / sign out / recovery).
   ref.watch(authStateProvider);
@@ -52,37 +52,51 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: _AuthChangeNotifier(ref),
     debugLogDiagnostics: false,
     redirect: (context, state) {
-      final loggedIn = SupabaseService.currentUser != null;
+      final user = SupabaseService.currentUser;
+      final loggedIn = user != null;
       final path = state.uri.path;
 
-      final isPublic = path.startsWith('/sign/') ||
-          path == '/signin' ||
-          path == '/signup' ||
-          path == '/forgot-password' ||
-          path == '/reset-password';
-          path == '/accept-invite';
+      // ---------- Special cases first (no bouncing) ----------
 
-      // /accept-invite is special: the user is "logged in" via the invite
-// link but needs to set a password. Skip the usual redirect.
-      if (path == '/accept-invite') return null;
-
-      // /reset-password is special: the user is "logged in" with a
-      // recovery session, but we still want to show the screen so
-      // they can set a new password. Skip the usual redirect.
+      // Password recovery: user is "logged in" via recovery token,
+      // but we want them to set a new password before anything else.
       if (path == '/reset-password') return null;
 
-      if (isPublic) {
-        // Already signed in? Skip the auth screens.
-        if (loggedIn &&
-            (path == '/signin' ||
-                path == '/signup' ||
-                path == '/forgot-password')) {
-          return '/';
+      // Invite acceptance: user is "logged in" via invite token,
+      // but we want them to set their password first.
+      if (path == '/accept-invite') return null;
+
+      // Public signing page for clients (uses a per-document token,
+      // no auth required).
+      if (path.startsWith('/sign/')) return null;
+
+      // ---------- Invited user detection ----------
+      //
+      // If a logged-in user has invited_by metadata AND has not yet
+      // set their password, force them to /accept-invite no matter
+      // where they tried to go.
+      if (loggedIn) {
+        final meta = user.userMetadata ?? const {};
+        final wasInvited = meta['invited_by'] != null;
+        final passwordSet = meta['password_set'] == true;
+        if (wasInvited && !passwordSet) {
+          return '/accept-invite';
         }
+      }
+
+      // ---------- Normal auth gating ----------
+
+      final isPublicAuthScreen = path == '/signin' ||
+          path == '/signup' ||
+          path == '/forgot-password';
+
+      if (isPublicAuthScreen) {
+        // Already signed in? Send them home.
+        if (loggedIn) return '/';
         return null;
       }
 
-      // Anything else requires auth.
+      // Everything else needs auth.
       if (!loggedIn) return '/signin';
       return null;
     },
@@ -182,9 +196,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/contracts',
             builder: (_, __) => const ContractsScreen(),
           ),
-
-
-
           GoRoute(
             path: '/contracts/new',
             builder: (_, state) => NewContractScreen(
@@ -237,20 +248,9 @@ class _AuthChangeNotifier extends ChangeNotifier {
         // Password recovery → reset screen
         if (authState.event == AuthChangeEvent.passwordRecovery) {
           _navigate('/reset-password');
-          return;
         }
-
-        // Invited user signed in → force them to /accept-invite
-        // until they set a password. We identify them by user metadata.
-        if (authState.event == AuthChangeEvent.signedIn) {
-          final user = authState.session?.user;
-          final meta = user?.userMetadata;
-          if (meta != null &&
-              meta['invited_by'] != null &&
-              meta['password_set'] != true) {
-            _navigate('/accept-invite');
-          }
-        }
+        // (Invited users are handled by the redirect function itself,
+        // so we don't need a listener for that.)
       });
     });
   }
@@ -268,6 +268,7 @@ class _AuthChangeNotifier extends ChangeNotifier {
 /// Captured from AppShell on first build so we can navigate from
 /// outside the widget tree (e.g. in response to auth events).
 BuildContext? _routerCtx;
+
 /// Called from AppShell.build() to capture a routed context for use
 /// in auth-event handlers (e.g. password recovery) that fire outside
 /// the widget tree.

@@ -49,3 +49,11 @@ FutureProvider.autoDispose.family<Property, String>((ref, id) async {
   final repo = ref.read(propertiesRepoProvider);
   return repo.get(id);
 });
+
+/// Unit types for a single property (rooms in a hotel, plot variants in an estate).
+final propertyUnitTypesProvider =
+FutureProvider.autoDispose.family<List<PropertyUnitType>, String>(
+        (ref, propertyId) async {
+      final repo = ref.read(propertiesRepoProvider);
+      return repo.getUnitTypes(propertyId);
+    });

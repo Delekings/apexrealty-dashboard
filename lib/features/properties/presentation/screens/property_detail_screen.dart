@@ -11,6 +11,8 @@ import '../../../../data/models/models.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/properties_providers.dart';
 import '../widgets/unit_inventory_card.dart';
+import '../../../shortlet/widgets/property_shortlet_card.dart';
+
 
 class PropertyDetailScreen extends ConsumerStatefulWidget {
   final String propertyId;
@@ -286,7 +288,12 @@ class _InfoColumn extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
+        // Shortlet listing card
+        PropertyShortletCard(property: property),
+        const SizedBox(height: 12),
+
         // Location card
+
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

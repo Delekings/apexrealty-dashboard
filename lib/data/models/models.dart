@@ -622,3 +622,319 @@ class TemplateVariable {
     _ => category,
   };
 }
+
+// ============================================================
+// SHORTLET — Rental Listings
+// ============================================================
+
+enum CancellationPolicy { flexible, moderate, strict, nonRefundable }
+
+CancellationPolicy cancellationPolicyFromDb(String s) => switch (s) {
+  'flexible' => CancellationPolicy.flexible,
+  'strict' => CancellationPolicy.strict,
+  'non_refundable' => CancellationPolicy.nonRefundable,
+  _ => CancellationPolicy.moderate,
+};
+
+String cancellationPolicyToDb(CancellationPolicy p) => switch (p) {
+  CancellationPolicy.flexible => 'flexible',
+  CancellationPolicy.moderate => 'moderate',
+  CancellationPolicy.strict => 'strict',
+  CancellationPolicy.nonRefundable => 'non_refundable',
+};
+
+String cancellationPolicyLabel(CancellationPolicy p) => switch (p) {
+  CancellationPolicy.flexible => 'Flexible — refund up to 24h before',
+  CancellationPolicy.moderate => 'Moderate — refund up to 5 days before',
+  CancellationPolicy.strict => 'Strict — 50% refund up to 7 days before',
+  CancellationPolicy.nonRefundable => 'Non-refundable',
+};
+
+class RentalListing {
+  final String id;
+  final String agencyId;
+  final String propertyId;
+  final String? propertyUnitTypeId; // null = whole property
+  final num nightlyRateNgn;
+  final num? weeklyRateNgn;
+  final num? monthlyRateNgn;
+  final num cleaningFeeNgn;
+  final num securityDepositNgn;
+  final String checkInTime;  // 'HH:MM'
+  final String checkOutTime; // 'HH:MM'
+  final int minNights;
+  final int maxNights;
+  final int maxGuests;
+  final String? description;
+  final List<String> amenities;
+  final String? houseRulesMarkdown;
+  final CancellationPolicy cancellationPolicy;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  RentalListing({
+    required this.id,
+    required this.agencyId,
+    required this.propertyId,
+    required this.nightlyRateNgn,
+    required this.cleaningFeeNgn,
+    required this.securityDepositNgn,
+    required this.checkInTime,
+    required this.checkOutTime,
+    required this.minNights,
+    required this.maxNights,
+    required this.maxGuests,
+    required this.amenities,
+    required this.cancellationPolicy,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+    this.propertyUnitTypeId,
+    this.weeklyRateNgn,
+    this.monthlyRateNgn,
+    this.description,
+    this.houseRulesMarkdown,
+  });
+
+  factory RentalListing.fromMap(Map<String, dynamic> m) {
+    final rawAmenities = m['amenities'];
+    final amenities = rawAmenities is List
+        ? rawAmenities.map((e) => e.toString()).toList()
+        : <String>[];
+
+    return RentalListing(
+      id: m['id'] as String,
+      agencyId: m['agency_id'] as String,
+      propertyId: m['property_id'] as String,
+      propertyUnitTypeId: m['property_unit_type_id'] as String?,
+      nightlyRateNgn: m['nightly_rate_ngn'] as num,
+      weeklyRateNgn: m['weekly_rate_ngn'] as num?,
+      monthlyRateNgn: m['monthly_rate_ngn'] as num?,
+      cleaningFeeNgn: (m['cleaning_fee_ngn'] as num?) ?? 0,
+      securityDepositNgn: (m['security_deposit_ngn'] as num?) ?? 0,
+      checkInTime: (m['check_in_time'] as String?) ?? '15:00',
+      checkOutTime: (m['check_out_time'] as String?) ?? '11:00',
+      minNights: (m['min_nights'] as num?)?.toInt() ?? 1,
+      maxNights: (m['max_nights'] as num?)?.toInt() ?? 30,
+      maxGuests: (m['max_guests'] as num?)?.toInt() ?? 2,
+      description: m['description'] as String?,
+      amenities: amenities,
+      houseRulesMarkdown: m['house_rules_markdown'] as String?,
+      cancellationPolicy:
+      cancellationPolicyFromDb(m['cancellation_policy'] as String? ?? 'moderate'),
+      isActive: (m['is_active'] as bool?) ?? true,
+      createdAt: DateTime.parse(m['created_at'] as String),
+      updatedAt: DateTime.parse(m['updated_at'] as String),
+    );
+  }
+}
+
+// ============================================================
+// SHORTLET — Bookings
+// ============================================================
+
+enum BookingStatus {
+  pending,
+  confirmed,
+  checkedIn,
+  checkedOut,
+  cancelled,
+  noShow,
+}
+
+BookingStatus bookingStatusFromDb(String s) => switch (s) {
+  'confirmed' => BookingStatus.confirmed,
+  'checked_in' => BookingStatus.checkedIn,
+  'checked_out' => BookingStatus.checkedOut,
+  'cancelled' => BookingStatus.cancelled,
+  'no_show' => BookingStatus.noShow,
+  _ => BookingStatus.pending,
+};
+
+String bookingStatusToDb(BookingStatus s) => switch (s) {
+  BookingStatus.pending => 'pending',
+  BookingStatus.confirmed => 'confirmed',
+  BookingStatus.checkedIn => 'checked_in',
+  BookingStatus.checkedOut => 'checked_out',
+  BookingStatus.cancelled => 'cancelled',
+  BookingStatus.noShow => 'no_show',
+};
+
+String bookingStatusLabel(BookingStatus s) => switch (s) {
+  BookingStatus.pending => 'Pending',
+  BookingStatus.confirmed => 'Confirmed',
+  BookingStatus.checkedIn => 'Checked in',
+  BookingStatus.checkedOut => 'Checked out',
+  BookingStatus.cancelled => 'Cancelled',
+  BookingStatus.noShow => 'No show',
+};
+
+enum BookingPaymentStatus { unpaid, partial, paid, refunded }
+
+BookingPaymentStatus bookingPaymentStatusFromDb(String s) => switch (s) {
+  'partial' => BookingPaymentStatus.partial,
+  'paid' => BookingPaymentStatus.paid,
+  'refunded' => BookingPaymentStatus.refunded,
+  _ => BookingPaymentStatus.unpaid,
+};
+
+String bookingPaymentStatusLabel(BookingPaymentStatus s) => switch (s) {
+  BookingPaymentStatus.unpaid => 'Unpaid',
+  BookingPaymentStatus.partial => 'Partial',
+  BookingPaymentStatus.paid => 'Paid',
+  BookingPaymentStatus.refunded => 'Refunded',
+};
+
+enum BookingSource { direct, website, walkIn, agent, phone }
+
+BookingSource bookingSourceFromDb(String s) => switch (s) {
+  'website' => BookingSource.website,
+  'walk_in' => BookingSource.walkIn,
+  'agent' => BookingSource.agent,
+  'phone' => BookingSource.phone,
+  _ => BookingSource.direct,
+};
+
+String bookingSourceToDb(BookingSource s) => switch (s) {
+  BookingSource.direct => 'direct',
+  BookingSource.website => 'website',
+  BookingSource.walkIn => 'walk_in',
+  BookingSource.agent => 'agent',
+  BookingSource.phone => 'phone',
+};
+
+String bookingSourceLabel(BookingSource s) => switch (s) {
+  BookingSource.direct => 'Direct',
+  BookingSource.website => 'Website',
+  BookingSource.walkIn => 'Walk-in',
+  BookingSource.agent => 'Agent referral',
+  BookingSource.phone => 'Phone call',
+};
+
+/// Full booking record from the bookings_overview view
+class BookingOverview {
+  final String id;
+  final String bookingNo;
+  final BookingStatus status;
+  final BookingPaymentStatus paymentStatus;
+  final BookingSource source;
+  final DateTime checkInDate;
+  final DateTime checkOutDate;
+  final int nights;
+  final int guestsCount;
+  final num totalNgn;
+  final num amountPaidNgn;
+  final num balanceNgn;
+  final DateTime? checkedInAt;
+  final DateTime? checkedOutAt;
+  final DateTime createdAt;
+  final String clientId;
+  final String clientName;
+  final String clientPhone;
+  final String? clientEmail;
+  final String propertyId;
+  final String propertyTitle;
+  final String propertyLocation;
+  final String? unitTypeId;
+  final String? unitTitle;
+  final String? agentId;
+  final String? agentName;
+
+  BookingOverview({
+    required this.id,
+    required this.bookingNo,
+    required this.status,
+    required this.paymentStatus,
+    required this.source,
+    required this.checkInDate,
+    required this.checkOutDate,
+    required this.nights,
+    required this.guestsCount,
+    required this.totalNgn,
+    required this.amountPaidNgn,
+    required this.balanceNgn,
+    required this.createdAt,
+    required this.clientId,
+    required this.clientName,
+    required this.clientPhone,
+    required this.propertyId,
+    required this.propertyTitle,
+    required this.propertyLocation,
+    this.checkedInAt,
+    this.checkedOutAt,
+    this.clientEmail,
+    this.unitTypeId,
+    this.unitTitle,
+    this.agentId,
+    this.agentName,
+  });
+
+  factory BookingOverview.fromMap(Map<String, dynamic> m) => BookingOverview(
+    id: m['id'] as String,
+    bookingNo: m['booking_no'] as String,
+    status: bookingStatusFromDb(m['status'] as String),
+    paymentStatus:
+    bookingPaymentStatusFromDb(m['payment_status'] as String),
+    source: bookingSourceFromDb(m['source'] as String),
+    checkInDate: DateTime.parse(m['check_in_date'] as String),
+    checkOutDate: DateTime.parse(m['check_out_date'] as String),
+    nights: (m['nights'] as num).toInt(),
+    guestsCount: (m['guests_count'] as num).toInt(),
+    totalNgn: m['total_ngn'] as num,
+    amountPaidNgn: (m['amount_paid_ngn'] as num?) ?? 0,
+    balanceNgn: (m['balance_ngn'] as num?) ?? 0,
+    checkedInAt: m['checked_in_at'] != null
+        ? DateTime.parse(m['checked_in_at'] as String)
+        : null,
+    checkedOutAt: m['checked_out_at'] != null
+        ? DateTime.parse(m['checked_out_at'] as String)
+        : null,
+    createdAt: DateTime.parse(m['created_at'] as String),
+    clientId: m['client_id'] as String,
+    clientName: m['client_name'] as String,
+    clientPhone: m['client_phone'] as String,
+    clientEmail: m['client_email'] as String?,
+    propertyId: m['property_id'] as String,
+    propertyTitle: m['property_title'] as String,
+    propertyLocation: m['property_location'] as String,
+    unitTypeId: m['unit_type_id'] as String?,
+    unitTitle: m['unit_title'] as String?,
+    agentId: m['agent_id'] as String?,
+    agentName: m['agent_name'] as String?,
+  );
+
+  /// "Mr Adebayo — Plot 12, Lekki · 3 nights"
+  String summary() {
+    final unit = unitTitle != null ? ' ($unitTitle)' : '';
+    return '$clientName — $propertyTitle$unit · $nights night${nights == 1 ? '' : 's'}';
+  }
+}
+
+/// Lightweight booking range used by the calendar
+class BookedRange {
+  final String bookingId;
+  final String bookingNo;
+  final String clientName;
+  final DateTime checkInDate;
+  final DateTime checkOutDate;
+  final BookingStatus status;
+
+  BookedRange({
+    required this.bookingId,
+    required this.bookingNo,
+    required this.clientName,
+    required this.checkInDate,
+    required this.checkOutDate,
+    required this.status,
+  });
+
+  factory BookedRange.fromMap(Map<String, dynamic> m) => BookedRange(
+    bookingId: m['booking_id'] as String,
+    bookingNo: m['booking_no'] as String,
+    clientName: m['client_name'] as String,
+    checkInDate: DateTime.parse(m['check_in_date'] as String),
+    checkOutDate: DateTime.parse(m['check_out_date'] as String),
+    status: bookingStatusFromDb(m['status'] as String),
+  );
+}
