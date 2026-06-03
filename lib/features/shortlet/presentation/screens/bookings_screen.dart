@@ -318,13 +318,16 @@ class _BookingRow extends ConsumerWidget {
     final isDepartingToday = booking.status == BookingStatus.checkedIn &&
         _isSameDay(booking.checkOutDate, today);
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+    return InkWell(
         borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
+        onTap: () => context.go('/bookings/${booking.id}'),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Status pill column
@@ -410,6 +413,7 @@ class _BookingRow extends ConsumerWidget {
           _rowActions(context, ref),
         ],
       ),
+        )
     );
   }
 
@@ -431,13 +435,7 @@ class _BookingRow extends ConsumerWidget {
           )
         else
           TextButton(
-            onPressed: () {
-              // Booking detail screen comes in C4
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('Booking detail screen comes next (C4)')),
-              );
-            },
+            onPressed: () => context.go('/bookings/${booking.id}'),
             child: const Text('View'),
           ),
       ],

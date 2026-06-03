@@ -30,6 +30,7 @@ import '../../features/staff/presentation/screens/staff_screen.dart';
 import '../../features/properties/presentation/screens/new_property_screen.dart';
 import '../../features/settings/presentation/screens/contract_template_screen.dart';
 import '../../features/email/presentation/screens/email_settings_screen.dart';
+import '../../features/shortlet/presentation/screens/booking_detail_screen.dart';
 import '../../features/email/presentation/screens/email_campaigns_screen.dart';
 import '../../features/shortlet/presentation/screens/bookings_screen.dart';
 import '../../features/shortlet/presentation/screens/new_booking_screen.dart';
@@ -240,6 +241,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/bookings/new',
             builder: (_, __) => const NewBookingScreen(),
+          ),
+          GoRoute(
+            path: '/bookings/:id',
+            builder: (_, state) => BookingDetailScreen(
+              bookingId: state.pathParameters['id']!,
+            ),
           ),
         ],
       ),

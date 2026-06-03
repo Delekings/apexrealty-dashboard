@@ -8,8 +8,46 @@ import '../services/supabase_service.dart';
 class BookingsRepository {
   final SupabaseClient _c = SupabaseService.client;
 
-  // ---------- Reads ----------
+  /// Payments recorded against this booking.
+  Future<List<BookingPayment>> getPayments(String bookingId) async {
+    final rows = await _c
+        .from('payments')
+        .select(
+        '*, recorded_by_profile:profiles!recorded_by(full_name)')
+        .eq('booking_id', bookingId)
+        .order('paid_at', ascending: false);
+    return (rows as List)
+        .map((r) => BookingPayment.fromMap(r as Map<String, dynamic>))
+        .toList();
+  }
 
+  /// Record a payment against a booking. Updates amount_paid + payment_status
+  /// atomically via the record_booking_payment RPC.
+  Future<void> recordPayment({
+    required String bookingId,
+    required num amount,
+    required String channel,
+    String? reference,
+    String? notes,
+  }) async {
+    await _c.rpc('record_booking_payment', params: {
+      'p_booking_id': bookingId,
+      'p_amount': amount,
+      'p_channel': channel,
+      if (reference != null && reference.trim().isNotEmpty)
+        'p_reference': reference.trim(),
+      if (notes != null && notes.trim().isNotEmpty) 'p_notes': notes.trim(),
+    });
+  }
+
+  /// Update notes on a booking
+  Future<void> updateNotes(String bookingId, String? notes) async {
+    await _c.from('bookings').update({
+      'notes': notes == null || notes.trim().isEmpty ? null : notes.trim(),
+    }).eq('id', bookingId);
+  }
+
+  // ---------- Reads ----------
   /// All bookings for the current agency, optionally filtered by status.
   Future<List<BookingOverview>> list({
     BookingStatus? status,
@@ -251,3 +289,9 @@ final pastBookingsProvider =
 FutureProvider<List<BookingOverview>>((ref) async {
   return ref.read(bookingsRepoProvider).listPast();
 });
+
+final bookingPaymentsProvider =
+FutureProvider.family<List<BookingPayment>, String>(
+        (ref, bookingId) async {
+      return ref.read(bookingsRepoProvider).getPayments(bookingId);
+    });

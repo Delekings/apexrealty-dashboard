@@ -813,6 +813,7 @@ String bookingSourceLabel(BookingSource s) => switch (s) {
 };
 
 /// Full booking record from the bookings_overview view
+/// Full booking record from the bookings_overview view
 class BookingOverview {
   final String id;
   final String bookingNo;
@@ -823,11 +824,20 @@ class BookingOverview {
   final DateTime checkOutDate;
   final int nights;
   final int guestsCount;
+  final num nightlyRateNgn;
+  final num cleaningFeeNgn;
+  final num securityDepositNgn;
   final num totalNgn;
   final num amountPaidNgn;
   final num balanceNgn;
   final DateTime? checkedInAt;
   final DateTime? checkedOutAt;
+  final String? notes;
+  final DateTime? cancelledAt;
+  final String? cancellationReason;
+  final DateTime? houseRulesAcceptedAt;
+  final String? houseRulesSignatureUrl;
+  final String rentalListingId;
   final DateTime createdAt;
   final String clientId;
   final String clientName;
@@ -840,6 +850,10 @@ class BookingOverview {
   final String? unitTitle;
   final String? agentId;
   final String? agentName;
+  final String checkInTime;
+  final String checkOutTime;
+  final String? houseRulesMarkdown;
+  final String cancellationPolicy;
 
   BookingOverview({
     required this.id,
@@ -851,9 +865,13 @@ class BookingOverview {
     required this.checkOutDate,
     required this.nights,
     required this.guestsCount,
+    required this.nightlyRateNgn,
+    required this.cleaningFeeNgn,
+    required this.securityDepositNgn,
     required this.totalNgn,
     required this.amountPaidNgn,
     required this.balanceNgn,
+    required this.rentalListingId,
     required this.createdAt,
     required this.clientId,
     required this.clientName,
@@ -861,13 +879,22 @@ class BookingOverview {
     required this.propertyId,
     required this.propertyTitle,
     required this.propertyLocation,
+    required this.checkInTime,
+    required this.checkOutTime,
+    required this.cancellationPolicy,
     this.checkedInAt,
     this.checkedOutAt,
+    this.notes,
+    this.cancelledAt,
+    this.cancellationReason,
+    this.houseRulesAcceptedAt,
+    this.houseRulesSignatureUrl,
     this.clientEmail,
     this.unitTypeId,
     this.unitTitle,
     this.agentId,
     this.agentName,
+    this.houseRulesMarkdown,
   });
 
   factory BookingOverview.fromMap(Map<String, dynamic> m) => BookingOverview(
@@ -881,6 +908,9 @@ class BookingOverview {
     checkOutDate: DateTime.parse(m['check_out_date'] as String),
     nights: (m['nights'] as num).toInt(),
     guestsCount: (m['guests_count'] as num).toInt(),
+    nightlyRateNgn: m['nightly_rate_ngn'] as num,
+    cleaningFeeNgn: (m['cleaning_fee_ngn'] as num?) ?? 0,
+    securityDepositNgn: (m['security_deposit_ngn'] as num?) ?? 0,
     totalNgn: m['total_ngn'] as num,
     amountPaidNgn: (m['amount_paid_ngn'] as num?) ?? 0,
     balanceNgn: (m['balance_ngn'] as num?) ?? 0,
@@ -890,6 +920,16 @@ class BookingOverview {
     checkedOutAt: m['checked_out_at'] != null
         ? DateTime.parse(m['checked_out_at'] as String)
         : null,
+    notes: m['notes'] as String?,
+    cancelledAt: m['cancelled_at'] != null
+        ? DateTime.parse(m['cancelled_at'] as String)
+        : null,
+    cancellationReason: m['cancellation_reason'] as String?,
+    houseRulesAcceptedAt: m['house_rules_accepted_at'] != null
+        ? DateTime.parse(m['house_rules_accepted_at'] as String)
+        : null,
+    houseRulesSignatureUrl: m['house_rules_signature_url'] as String?,
+    rentalListingId: m['rental_listing_id'] as String,
     createdAt: DateTime.parse(m['created_at'] as String),
     clientId: m['client_id'] as String,
     clientName: m['client_name'] as String,
@@ -902,13 +942,49 @@ class BookingOverview {
     unitTitle: m['unit_title'] as String?,
     agentId: m['agent_id'] as String?,
     agentName: m['agent_name'] as String?,
+    checkInTime: (m['check_in_time'] as String?) ?? '15:00',
+    checkOutTime: (m['check_out_time'] as String?) ?? '11:00',
+    houseRulesMarkdown: m['house_rules_markdown'] as String?,
+    cancellationPolicy:
+    (m['cancellation_policy'] as String?) ?? 'moderate',
   );
 
-  /// "Mr Adebayo — Plot 12, Lekki · 3 nights"
   String summary() {
     final unit = unitTitle != null ? ' ($unitTitle)' : '';
     return '$clientName — $propertyTitle$unit · $nights night${nights == 1 ? '' : 's'}';
   }
+}
+
+/// Single payment recorded against a booking.
+class BookingPayment {
+  final String id;
+  final num amountNgn;
+  final String channel;
+  final String? reference;
+  final String? notes;
+  final DateTime paidAt;
+  final String? recordedByName;
+
+  BookingPayment({
+    required this.id,
+    required this.amountNgn,
+    required this.channel,
+    required this.paidAt,
+    this.reference,
+    this.notes,
+    this.recordedByName,
+  });
+
+  factory BookingPayment.fromMap(Map<String, dynamic> m) => BookingPayment(
+    id: m['id'] as String,
+    amountNgn: m['amount_ngn'] as num,
+    channel: m['channel'] as String,
+    reference: m['reference'] as String?,
+    notes: m['notes'] as String?,
+    paidAt: DateTime.parse(m['paid_at'] as String),
+    recordedByName: (m['recorded_by_profile'] as Map?)?['full_name']
+    as String?,
+  );
 }
 
 /// Lightweight booking range used by the calendar
