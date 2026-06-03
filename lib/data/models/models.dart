@@ -3,12 +3,13 @@
 // Plain Dart models that mirror the Supabase tables.
 // Swap to Freezed + json_serializable once you run build_runner.
 
-enum UserRole { superAdmin, agencyAdmin, manager, agent, viewer }
+enum UserRole { superAdmin, agencyAdmin, manager, accountant, agent, viewer }
 
 UserRole roleFromString(String? s) => switch (s) {
   'super_admin' => UserRole.superAdmin,
   'agency_admin' => UserRole.agencyAdmin,
   'manager' => UserRole.manager,
+  'accountant' => UserRole.accountant,
   'viewer' => UserRole.viewer,
   _ => UserRole.agent,
 };
@@ -20,7 +21,9 @@ class Profile {
   final String? phone;
   final UserRole role;
   final String? avatarUrl;
-
+  final bool? isExternal;
+  final num? commissionRatePct;
+  final String? email;
   Profile({
     required this.id,
     required this.agencyId,
@@ -28,8 +31,10 @@ class Profile {
     required this.role,
     this.phone,
     this.avatarUrl,
+    this.isExternal,
+    this.commissionRatePct,
+    this.email,
   });
-
   factory Profile.fromMap(Map<String, dynamic> m) => Profile(
     id: m['id'] as String,
     agencyId: m['agency_id'] as String?,
@@ -37,6 +42,9 @@ class Profile {
     phone: m['phone'] as String?,
     role: roleFromString(m['role'] as String?),
     avatarUrl: m['avatar_url'] as String?,
+    isExternal: m['is_external'] as bool?,
+    commissionRatePct: m['commission_rate_pct'] as num?,
+    email: m['email'] as String?,
   );
 
   String get initials {

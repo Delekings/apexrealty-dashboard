@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/providers/auth_providers.dart';
+import '../auth/permissions.dart';
 import 'app_router.dart' show captureRouterContext;
 import '../theme/app_theme.dart';
 
@@ -13,29 +14,67 @@ class _NavEntry {
   final String route;
   final int? badge;
   final String? section;
-  const _NavEntry(this.label, this.icon, this.route, {this.badge, this.section});
+  /// If non-null, the user must have this permission for the entry to render.
+  final Permission? requiredPermission;
+  /// If true, the entry is hidden from external agents (marketers).
+  final bool hideFromMarketers;
+  const _NavEntry(
+      this.label,
+      this.icon,
+      this.route, {
+        this.badge,
+        this.section,
+        this.requiredPermission,
+        this.hideFromMarketers = false,
+      });
 }
 
 const _nav = <_NavEntry>[
   _NavEntry('Dashboard', Icons.dashboard_outlined, '/', section: 'Overview'),
-  _NavEntry('Alerts', Icons.notifications_none_rounded, '/reminders', badge: 5, section: 'Overview'),
+  _NavEntry('Alerts', Icons.notifications_none_rounded, '/reminders',
+      badge: 5, section: 'Overview'),
 
-  _NavEntry('All Clients', Icons.people_outline, '/clients', section: 'Clients'),
-  _NavEntry('Contracts', Icons.assignment_outlined, '/contracts', section: 'Clients'),
-  _NavEntry('Installments', Icons.payments_outlined, '/installments', badge: 3, section: 'Clients'),
-  _NavEntry('Import clients', Icons.upload_file_outlined, '/clients/import', section: 'Clients'),
+  _NavEntry('All Clients', Icons.people_outline, '/clients',
+      section: 'Clients', hideFromMarketers: true),
+  _NavEntry('Contracts', Icons.assignment_outlined, '/contracts',
+      section: 'Clients', hideFromMarketers: true),
+  _NavEntry('Installments', Icons.payments_outlined, '/installments',
+      badge: 3, section: 'Clients', hideFromMarketers: true),
+  _NavEntry('Import clients', Icons.upload_file_outlined, '/clients/import',
+      section: 'Clients',
+      requiredPermission: Permission.editAnyClient),
 
-  _NavEntry('Campaigns', Icons.send_outlined, '/email/campaigns', section: 'Email'),
-  _NavEntry('Automations', Icons.auto_awesome_outlined, '/email/automations', section: 'Email'),
-  _NavEntry('Email settings', Icons.tune_outlined, '/email/settings', section: 'Email'),
+  _NavEntry('Campaigns', Icons.send_outlined, '/email/campaigns',
+      section: 'Email',
+      requiredPermission: Permission.manageEmailSettings),
+  _NavEntry('Automations', Icons.auto_awesome_outlined, '/email/automations',
+      section: 'Email',
+      requiredPermission: Permission.manageEmailSettings),
+  _NavEntry('Email settings', Icons.tune_outlined, '/email/settings',
+      section: 'Email',
+      requiredPermission: Permission.manageEmailSettings),
 
-  _NavEntry('Signed contracts', Icons.assignment_turned_in_outlined, '/documents', section: 'Documents'),
-  _NavEntry('Bookings', Icons.event_outlined, '/bookings', section: 'Shortlet'),
-  _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures', section: 'Settings'),
-  _NavEntry('Contract template', Icons.description_outlined, '/settings/contract-template', section: 'Settings'),
-  _NavEntry('Staff', Icons.badge_outlined, '/staff', section: 'Staff'),
+  _NavEntry('Signed contracts', Icons.assignment_turned_in_outlined, '/documents',
+      section: 'Documents', hideFromMarketers: true),
 
-  _NavEntry('Properties', Icons.home_work_outlined, '/properties', section: 'Properties'),
+  _NavEntry('Bookings', Icons.event_outlined, '/bookings',
+      section: 'Shortlet', hideFromMarketers: true),
+
+  _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures',
+      section: 'Settings',
+      requiredPermission: Permission.manageSignatures),
+  _NavEntry('Contract template', Icons.description_outlined,
+      '/settings/contract-template',
+      section: 'Settings',
+      requiredPermission: Permission.manageContractTemplate),
+
+  _NavEntry('Staff', Icons.badge_outlined, '/staff',
+      section: 'Staff',
+      requiredPermission: Permission.manageStaff),
+
+  _NavEntry('Properties', Icons.home_work_outlined, '/properties',
+      section: 'Properties',
+      requiredPermission: Permission.manageProperties),
 ];
 
 class AppShell extends ConsumerWidget {
@@ -155,15 +194,26 @@ class _TopBar extends ConsumerWidget implements PreferredSizeWidget {
   }
 }
 
-class _Sidebar extends StatelessWidget {
+class _Sidebar extends ConsumerWidget {
   const _Sidebar();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final currentPath = GoRouterState.of(context).uri.path;
+    final perms = ref.watch(permissionsProvider);
 
+    // Filter entries by permission + marketer rules
+    final visible = _nav.where((n) {
+      if (n.hideFromMarketers && perms.isMarketer) return false;
+      if (n.requiredPermission != null && !perms.can(n.requiredPermission!)) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    // Group by section, preserving original order
     final grouped = <String, List<_NavEntry>>{};
-    for (final n in _nav) {
+    for (final n in visible) {
       grouped.putIfAbsent(n.section ?? 'Other', () => []).add(n);
     }
 
