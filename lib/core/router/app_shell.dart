@@ -18,6 +18,8 @@ class _NavEntry {
   final Permission? requiredPermission;
   /// If true, the entry is hidden from external agents (marketers).
   final bool hideFromMarketers;
+  /// If true, the entry is hidden entirely — used for screens still being built.
+  final bool comingSoon;
   const _NavEntry(
       this.label,
       this.icon,
@@ -26,20 +28,21 @@ class _NavEntry {
         this.section,
         this.requiredPermission,
         this.hideFromMarketers = false,
+        this.comingSoon = false,
       });
 }
 
 const _nav = <_NavEntry>[
   _NavEntry('Dashboard', Icons.dashboard_outlined, '/', section: 'Overview'),
   _NavEntry('Alerts', Icons.notifications_none_rounded, '/reminders',
-      badge: 5, section: 'Overview'),
+      badge: 5, section: 'Overview', comingSoon: true),
 
   _NavEntry('All Clients', Icons.people_outline, '/clients',
       section: 'Clients', hideFromMarketers: true),
   _NavEntry('Contracts', Icons.assignment_outlined, '/contracts',
       section: 'Clients', hideFromMarketers: true),
   _NavEntry('Installments', Icons.payments_outlined, '/installments',
-      badge: 3, section: 'Clients', hideFromMarketers: true),
+      badge: 3, section: 'Clients', hideFromMarketers: true, comingSoon: true),
   _NavEntry('Import clients', Icons.upload_file_outlined, '/clients/import',
       section: 'Clients',
       requiredPermission: Permission.editAnyClient),
@@ -55,7 +58,7 @@ const _nav = <_NavEntry>[
       requiredPermission: Permission.manageEmailSettings),
 
   _NavEntry('Signed contracts', Icons.assignment_turned_in_outlined, '/documents',
-      section: 'Documents', hideFromMarketers: true),
+      section: 'Documents', hideFromMarketers: true, comingSoon: true),
 
   _NavEntry('Bookings', Icons.event_outlined, '/bookings',
       section: 'Shortlet', hideFromMarketers: true),
@@ -151,21 +154,22 @@ class _TopBar extends ConsumerWidget implements PreferredSizeWidget {
           child: const Text('🇳🇬 Nigeria',
               style: TextStyle(color: AppColors.brand, fontSize: 11, fontWeight: FontWeight.w500)),
         ),
-        Stack(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () => context.go('/reminders'),
-            ),
-            Positioned(
-              top: 10, right: 10,
-              child: Container(
-                width: 8, height: 8,
-                decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
-              ),
-            ),
-          ],
-        ),
+        // Stack(
+        //   children: [
+        //     IconButton(
+        //       icon: const Icon(Icons.notifications_outlined),
+        //       onPressed: () => context.go('/reminders'),
+        //     ),
+        //     Positioned(
+        //       top: 10, right: 10,
+        //       child: Container(
+        //         width: 8, height: 8,
+        //         decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+        //       ),
+        //     ),
+        //   ],
+        // ),
+        // Notifications bell hidden — Reminders feature still in development
         const SizedBox(width: 4),
         PopupMenuButton<String>(
           tooltip: 'Account',
@@ -203,14 +207,15 @@ class _Sidebar extends ConsumerWidget {
     final perms = ref.watch(permissionsProvider);
 
     // Filter entries by permission + marketer rules
+    // Filter entries by permission, marketer rules, and coming-soon flag
     final visible = _nav.where((n) {
+      if (n.comingSoon) return false;
       if (n.hideFromMarketers && perms.isMarketer) return false;
       if (n.requiredPermission != null && !perms.can(n.requiredPermission!)) {
         return false;
       }
       return true;
     }).toList();
-
     // Group by section, preserving original order
     final grouped = <String, List<_NavEntry>>{};
     for (final n in visible) {

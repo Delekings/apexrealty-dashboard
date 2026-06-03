@@ -95,30 +95,23 @@ class _SignaturePadState extends State<SignaturePad> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Mode picker
-        Row(
-          children: [
-            _modeChip(SignatureMode.draw, 'Draw', Icons.gesture),
-            const SizedBox(width: 6),
-            _modeChip(SignatureMode.upload, 'Upload image', Icons.upload),
-            const Spacer(),
-            if (_hasContent)
-              TextButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.refresh, size: 14),
-                label: const Text('Clear',
-                    style: TextStyle(fontSize: 12)),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
+        // Clear button only (no mode picker — parent handles that)
+        if (_hasContent)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: _clear,
+              icon: const Icon(Icons.refresh, size: 14),
+              label: const Text('Clear',
+                  style: TextStyle(fontSize: 12)),
+            ),
+          ),
 
         // Canvas / upload zone
         if (_mode == SignatureMode.draw)
           _canvas()
         else
           _uploadZone(),
-
         const SizedBox(height: 10),
 
         // Save button
@@ -191,17 +184,25 @@ class _SignaturePadState extends State<SignaturePad> {
             // White background
             Container(color: Colors.white),
             // Drawing surface
-            GestureDetector(
-              onPanStart: (d) {
-                _current = [d.localPosition];
-                setState(() => _strokes.add(_current));
-              },
-              onPanUpdate: (d) {
-                setState(() => _current.add(d.localPosition));
-              },
-              child: CustomPaint(
-                painter: _SigPainter(_strokes),
-                size: Size.infinite,
+            // Drawing surface
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (d) {
+                  setState(() {
+                    _current = [d.localPosition];
+                    _strokes.add(_current);
+                  });
+                },
+                onPanUpdate: (d) {
+                  setState(() {
+                    _current.add(d.localPosition);
+                  });
+                },
+                child: CustomPaint(
+                  painter: _SigPainter(List.of(_strokes)),
+                  size: Size.infinite,
+                ),
               ),
             ),
             // Placeholder text
@@ -312,5 +313,5 @@ class _SigPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SigPainter old) => old.strokes != strokes;
+  bool shouldRepaint(_SigPainter old) => true;
 }

@@ -84,7 +84,7 @@ class _DashboardBody extends StatelessWidget {
           crossAxisSpacing: 12,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: isWide ? 2.4 : 2.2,
+          childAspectRatio: isWide ? 2.2 : 1.9,
           children: [
             StatCard(
               label: 'Total Clients',

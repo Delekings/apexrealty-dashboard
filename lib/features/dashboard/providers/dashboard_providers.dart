@@ -1,6 +1,5 @@
 // lib/features/dashboard/providers/dashboard_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/models/models.dart';
 import '../../../data/services/supabase_service.dart';
@@ -43,11 +42,10 @@ final dashboardProvider = FutureProvider.autoDispose<DashboardData>((ref) async 
   final lastMonthStart = DateTime(now.year, now.month - 1, 1);
 
   final results = await Future.wait<dynamic>([
-    c.from('clients').count(CountOption.exact),
+    c.from('clients').select('id'),
     c.from('clients')
         .select('id')
-        .gte('created_at', monthStart.toIso8601String())
-        .count(CountOption.exact),
+        .gte('created_at', monthStart.toIso8601String()),
     c.from('payments')
         .select('amount_ngn')
         .gte('paid_at', monthStart.toIso8601String()),
@@ -56,14 +54,8 @@ final dashboardProvider = FutureProvider.autoDispose<DashboardData>((ref) async 
         .gte('paid_at', lastMonthStart.toIso8601String())
         .lt('paid_at', monthStart.toIso8601String()),
     c.from('installments').select('id, due_date').eq('status', 'overdue'),
-    c.from('properties')
-        .select('id')
-        .neq('status', 'inactive')
-        .count(CountOption.exact),
-    c.from('properties')
-        .select('id')
-        .eq('status', 'sold_out')
-        .count(CountOption.exact),
+    c.from('properties').select('id').neq('status', 'inactive'),
+    c.from('properties').select('id').eq('status', 'sold_out'),
     c.rpc('monthly_revenue_last_6'),
     c
         .from('activity_log')
@@ -74,13 +66,8 @@ final dashboardProvider = FutureProvider.autoDispose<DashboardData>((ref) async 
   ]);
 
   int countOf(dynamic r) {
-    try {
-      // supabase_flutter v2: count queries return a record with a `count` field
-      return (r.count ?? 0) as int;
-    } catch (_) {
-      if (r is Map && r['count'] is int) return r['count'] as int;
-      return 0;
-    }
+    if (r is List) return r.length;
+    return 0;
   }
 
   num sumAmounts(List rows) =>
