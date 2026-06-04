@@ -50,12 +50,21 @@ Deno.serve(async (req) => {
         if (!authHeader.startsWith("Bearer ")) {
             return json({ error: "Missing bearer token" }, 401);
         }
-        const userJwt = authHeader.replace("Bearer ", "");
+        const userJwt = authHeader.replace("Bearer ", "").trim();
 
-        const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+        // Admin client (service role) for privileged operations
+        const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false },
+        });
+
+        // User-scoped client carrying the caller's JWT — used to resolve identity
+        const userClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+            global: { headers: { Authorization: `Bearer ${userJwt}` } },
+            auth: { persistSession: false, autoRefreshToken: false },
+        });
 
         const { data: userResp, error: userErr } =
-            await admin.auth.getUser(userJwt);
+            await userClient.auth.getUser();
         if (userErr || !userResp.user) {
             console.error("auth.getUser failed", userErr);
             return json(

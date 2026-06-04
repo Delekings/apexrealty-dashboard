@@ -40,20 +40,56 @@
   <script src="flutter.js" defer></script>
 </head>
 <body>
-  <script>
-    window.addEventListener('load', function(ev) {
-      // Download main.dart.js
-      _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
-        onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
-            appRunner.runApp();
-          });
+<script>
+  // ====== Lintel auth shim ======
+  // Supabase invite/recovery redirects land us at:
+  //   https://app.getlintel.org/#/accept-invite?code=...&type=invite
+  // The ?code=... is inside the hash, so supabase-flutter can't find it
+  // in window.location.search. Move it to the real query string before
+  // Flutter boots.
+  (function() {
+    try {
+      var fullHash = window.location.hash || '';
+      // Look for a "?" inside the hash fragment
+      var qIdx = fullHash.indexOf('?');
+      if (qIdx > 0) {
+        var hashPath = fullHash.substring(0, qIdx);     // "#/accept-invite"
+        var hashQuery = fullHash.substring(qIdx + 1);   // "code=...&type=invite"
+        // Only do the swap if it looks like auth-related
+        if (hashQuery.indexOf('code=') !== -1 ||
+                hashQuery.indexOf('access_token=') !== -1 ||
+                hashQuery.indexOf('error=') !== -1 ||
+                hashQuery.indexOf('token_hash=') !== -1) {
+          // Stash for the Dart side
+          try {
+            sessionStorage.setItem('sb-pending-auth-query', hashQuery);
+          } catch (_) {}
+          // Move query out of hash and into real query string
+          var newUrl =
+                  window.location.pathname +
+                  '?' + hashQuery +
+                  hashPath;  // keeps the #/accept-invite part
+          history.replaceState(null, '', newUrl);
         }
-      });
+      }
+    } catch (e) {
+      console.error('auth shim error', e);
+    }
+  })();
+
+  window.addEventListener('load', function(ev) {
+    // Download main.dart.js
+    _flutter.loader.loadEntrypoint({
+      serviceWorker: {
+        serviceWorkerVersion: serviceWorkerVersion,
+      },
+      onEntrypointLoaded: function(engineInitializer) {
+        engineInitializer.initializeEngine().then(function(appRunner) {
+          appRunner.runApp();
+        });
+      }
     });
-  </script>
+  });
+</script>
 </body>
 </html>

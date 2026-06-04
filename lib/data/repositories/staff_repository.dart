@@ -98,6 +98,10 @@ class StaffRepository {
     double? commissionRatePct,
   }) async {
     try {
+      final session = _c.auth.currentSession;
+      if (session == null) {
+        throw Exception('Not signed in');
+      }
       final res = await _c.functions.invoke(
         'invite-staff',
         body: {
@@ -106,6 +110,9 @@ class StaffRepository {
           'role': role,
           'is_external': isExternal,
           'commission_rate_pct': commissionRatePct,
+        },
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
         },
       );
       if (res.status != 200) {
