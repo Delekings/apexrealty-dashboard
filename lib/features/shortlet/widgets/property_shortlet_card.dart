@@ -68,7 +68,7 @@ class PropertyShortletCard extends ConsumerWidget {
               const Icon(Icons.king_bed_outlined,
                   size: 16, color: AppColors.muted),
               const SizedBox(width: 6),
-              const Text('Shortlet',
+              const Text('Shortlet / Hotel',
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -125,7 +125,7 @@ class PropertyShortletCard extends ConsumerWidget {
             const Icon(Icons.king_bed_outlined,
                 size: 16, color: AppColors.brand),
             const SizedBox(width: 6),
-            const Text('Shortlet listing',
+            const Text('Shortlet / Hotel listing',
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -228,7 +228,7 @@ class PropertyShortletCard extends ConsumerWidget {
             const Icon(Icons.king_bed_outlined,
                 size: 16, color: AppColors.brand),
             const SizedBox(width: 6),
-            const Text('Shortlet listings',
+            const Text('Shortlet / Hotel listings',
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

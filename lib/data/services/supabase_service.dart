@@ -16,23 +16,26 @@ class SupabaseService {
       ),
     );
 
-    // After init, check if our JS shim stashed auth params from a mangled
-    // invite/recovery URL. If so, recover the session manually.
     if (kIsWeb) {
       try {
         final stash = web.window.sessionStorage.getItem('sb-pending-auth-query');
         if (stash != null && stash.isNotEmpty) {
           web.window.sessionStorage.removeItem('sb-pending-auth-query');
-          // Construct a clean URL with the recovered query so supabase-flutter
-          // can finish the PKCE exchange.
-          final url = Uri.parse(
-            '${Env.supabaseUrl}/?$stash',
-          );
-          await Supabase.instance.client.auth.getSessionFromUrl(url);
+          final params = Uri.splitQueryString(stash);
+          final accessToken = params['access_token'];
+          final refreshToken = params['refresh_token'];
+
+          if (accessToken != null && refreshToken != null) {
+            // Implicit flow — we have the tokens directly, set the session
+            await Supabase.instance.client.auth.setSession(refreshToken);
+          } else if (params['code'] != null) {
+            // PKCE flow — exchange the code via Supabase's URL handler
+            final url = Uri.parse('${Env.supabaseUrl}/?$stash');
+            await Supabase.instance.client.auth.getSessionFromUrl(url);
+          }
         }
-      } catch (_) {
-        // Recovery best-effort. If it fails, user will land on /signin and
-        // can request a fresh invite.
+      } catch (e) {
+        // ignore — user can sign in normally if recovery fails
       }
     }
   }

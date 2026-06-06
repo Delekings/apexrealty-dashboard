@@ -42,34 +42,55 @@
 <body>
 <script>
   // ====== Lintel auth shim ======
-  // Supabase invite/recovery redirects land us at:
-  //   https://app.getlintel.org/#/accept-invite?code=...&type=invite
-  // The ?code=... is inside the hash, so supabase-flutter can't find it
-  // in window.location.search. Move it to the real query string before
-  // Flutter boots.
+  // Supabase invite/recovery emails redirect us back with auth tokens.
+  // Depending on the auth flow (PKCE vs implicit), these arrive in
+  // different URL shapes. We need to normalize all of them so Flutter's
+  // hash router doesn't choke on the tokens.
   (function() {
     try {
-      var fullHash = window.location.hash || '';
-      // Look for a "?" inside the hash fragment
-      var qIdx = fullHash.indexOf('?');
+      var hash = window.location.hash || '';
+      var search = window.location.search || '';
+
+      // === Pattern 1: PKCE — #/route?code=... (query INSIDE hash) ===
+      var qIdx = hash.indexOf('?');
       if (qIdx > 0) {
-        var hashPath = fullHash.substring(0, qIdx);     // "#/accept-invite"
-        var hashQuery = fullHash.substring(qIdx + 1);   // "code=...&type=invite"
-        // Only do the swap if it looks like auth-related
+        var hashPath = hash.substring(0, qIdx);
+        var hashQuery = hash.substring(qIdx + 1);
         if (hashQuery.indexOf('code=') !== -1 ||
                 hashQuery.indexOf('access_token=') !== -1 ||
-                hashQuery.indexOf('error=') !== -1 ||
-                hashQuery.indexOf('token_hash=') !== -1) {
-          // Stash for the Dart side
-          try {
-            sessionStorage.setItem('sb-pending-auth-query', hashQuery);
-          } catch (_) {}
-          // Move query out of hash and into real query string
-          var newUrl =
-                  window.location.pathname +
-                  '?' + hashQuery +
-                  hashPath;  // keeps the #/accept-invite part
-          history.replaceState(null, '', newUrl);
+                hashQuery.indexOf('token_hash=') !== -1 ||
+                hashQuery.indexOf('error=') !== -1) {
+          try { sessionStorage.setItem('sb-pending-auth-query', hashQuery); } catch (_) {}
+          history.replaceState(null, '', window.location.pathname + '?' + hashQuery + hashPath);
+          return;
+        }
+      }
+
+      // === Pattern 2: Implicit — #access_token=...&type=invite (no /route) ===
+      if (hash.length > 1) {
+        var fragmentBody = hash.startsWith('#') ? hash.substring(1) : hash;
+        if (fragmentBody.indexOf('access_token=') !== -1 ||
+                fragmentBody.indexOf('error_code=') !== -1 ||
+                fragmentBody.indexOf('token_hash=') !== -1) {
+          // No path in the fragment, so we just stash and route to /accept-invite
+          // (we have to assume invite/recovery since access_token landed here)
+          try { sessionStorage.setItem('sb-pending-auth-query', fragmentBody); } catch (_) {}
+          history.replaceState(null, '', window.location.pathname + '?' + fragmentBody + '#/accept-invite');
+          return;
+        }
+      }
+
+      // === Pattern 3: Real query string with auth (already correct, just stash) ===
+      if (search.length > 1) {
+        var searchBody = search.startsWith('?') ? search.substring(1) : search;
+        if (searchBody.indexOf('access_token=') !== -1 ||
+                searchBody.indexOf('code=') !== -1 ||
+                searchBody.indexOf('error_code=') !== -1) {
+          try { sessionStorage.setItem('sb-pending-auth-query', searchBody); } catch (_) {}
+          // Keep the URL but ensure the hash routes to /accept-invite
+          if (!hash || hash === '#' || hash === '#/') {
+            history.replaceState(null, '', window.location.pathname + window.location.search + '#/accept-invite');
+          }
         }
       }
     } catch (e) {
@@ -78,7 +99,6 @@
   })();
 
   window.addEventListener('load', function(ev) {
-    // Download main.dart.js
     _flutter.loader.loadEntrypoint({
       serviceWorker: {
         serviceWorkerVersion: serviceWorkerVersion,

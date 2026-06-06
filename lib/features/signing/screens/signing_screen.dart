@@ -14,6 +14,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/repositories/signing_repository.dart';
 import '../../documents/widgets/signature_pad.dart';
 import '../widgets/typed_signature.dart';
+import '../../../core/widgets/single_file_picker.dart';
 
 enum SigningStep { otp, review, sign, done }
 
@@ -602,6 +603,8 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
           },
         ),
 
+
+
         if (_signatureBytes != null) ...[
           const SizedBox(height: 10),
           Row(
@@ -866,6 +869,100 @@ class _SignatureMethodPicker extends StatefulWidget {
       _SignatureMethodPickerState();
 }
 
+/// Image picker + preview for uploading a signature image.
+/// Lets the user select a PNG/JPG/WEBP from disk, preview it,
+/// then click Save to commit. Calls onSaved(bytes) on save.
+class _UploadSignatureWidget extends StatefulWidget {
+  final void Function(Uint8List bytes) onSaved;
+  const _UploadSignatureWidget({required this.onSaved});
+
+  @override
+  State<_UploadSignatureWidget> createState() =>
+      _UploadSignatureWidgetState();
+}
+
+class _UploadSignatureWidgetState extends State<_UploadSignatureWidget> {
+  Uint8List? _bytes;
+  String? _filename;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Preview area
+        Container(
+          height: 160,
+          decoration: BoxDecoration(
+            color: AppColors.bg2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.border),
+          ),
+          alignment: Alignment.center,
+          child: _bytes == null
+              ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.image_outlined,
+                  size: 36, color: AppColors.muted),
+              const SizedBox(height: 8),
+              Text(
+                'No image selected',
+                style:
+                TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+            ],
+          )
+              : Padding(
+            padding: const EdgeInsets.all(8),
+            child: Image.memory(_bytes!, fit: BoxFit.contain),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Picker
+        SingleFilePicker(
+          label: _bytes == null
+              ? 'Choose signature image (PNG / JPG)'
+              : 'Choose a different image',
+          allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
+          onChanged: (picked) {
+            setState(() {
+              _bytes = picked?.bytes;
+              _filename = picked?.filename;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+
+        // Save button
+        Row(
+          children: [
+            if (_filename != null) ...[
+              Expanded(
+                child: Text(
+                  _filename!,
+                  style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ] else
+              const Spacer(),
+            ElevatedButton.icon(
+              onPressed: _bytes == null
+                  ? null
+                  : () => widget.onSaved(_bytes!),
+              icon: const Icon(Icons.check, size: 16),
+              label: const Text('Use this signature'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _SignatureMethodPickerState
     extends State<_SignatureMethodPicker> {
   String _method = 'drawn';
@@ -900,15 +997,8 @@ class _SignatureMethodPickerState
             onSaved: (bytes, name) => widget.onTyped(bytes, name),
           )
         else
-          SignaturePad(
-            // Force upload mode by using SignaturePad's upload tab
-            onSaved: (r) {
-              if (r.method == 'uploaded') {
-                widget.onUploaded(r.pngBytes);
-              } else {
-                widget.onDrawn(r.pngBytes);
-              }
-            },
+          _UploadSignatureWidget(
+            onSaved: (bytes) => widget.onUploaded(bytes),
           ),
       ],
     );

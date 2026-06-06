@@ -61,7 +61,7 @@ const _nav = <_NavEntry>[
       section: 'Documents', hideFromMarketers: true, comingSoon: true),
 
   _NavEntry('Bookings', Icons.event_outlined, '/bookings',
-      section: 'Shortlet', hideFromMarketers: true),
+      section: 'Shortlet / Hotel', hideFromMarketers: true),
 
   _NavEntry('Signatures', Icons.draw_outlined, '/settings/signatures',
       section: 'Settings',
