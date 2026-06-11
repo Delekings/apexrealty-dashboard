@@ -62,8 +62,11 @@ class SignerInfo {
 
   String get roleLabel => switch (signerRole) {
     'client' => 'Purchaser',
-    'vendor_witness' => "Vendor's witness",
     'buyer_witness' => "Buyer's witness",
+  // Legacy historical: 'vendor_witness' rows may still exist on old
+  // documents. They no longer participate in signing flows, but we
+  // render a label for them if encountered.
+    'vendor_witness' => "Vendor's witness (legacy)",
     _ => signerRole,
   };
 
@@ -103,7 +106,25 @@ class SendForSignatureResult {
     required this.clientEmail,
   });
 }
+/// Bundle of an agency's branding assets needed to render a contract or
+/// receipt PDF with pre-embedded director signatures and common seal.
+class AgencyPdfBranding {
+  final DirectorSignature? primaryDirector;
+  final DirectorSignature? secondaryDirector;
+  final DirectorSignature? receiptSigner;
+  final Uint8List? commonSealImage;
+  final String vendorBlockStyle;
+  final String receiptBlockStyle;
 
+  AgencyPdfBranding({
+    this.primaryDirector,
+    this.secondaryDirector,
+    this.receiptSigner,
+    this.commonSealImage,
+    required this.vendorBlockStyle,
+    required this.receiptBlockStyle,
+  });
+}
 class DocumentsRepository {
   final SupabaseClient _c = SupabaseService.client;
 
@@ -131,8 +152,6 @@ class DocumentsRepository {
     required String contractId,
     required String agencySignatureId,
     required String unsignedPdfPath,
-    required String vendorWitnessName,
-    required String vendorWitnessEmail,
     String? buyerWitnessName,
     String? buyerWitnessEmail,
     int expiresInDays = 14,
@@ -141,8 +160,6 @@ class DocumentsRepository {
       'p_contract_id': contractId,
       'p_agency_signature_id': agencySignatureId,
       'p_unsigned_pdf_path': unsignedPdfPath,
-      'p_vendor_witness_name': vendorWitnessName,
-      'p_vendor_witness_email': vendorWitnessEmail,
       'p_buyer_witness_name': buyerWitnessName,
       'p_buyer_witness_email': buyerWitnessEmail,
       'p_expires_in_days': expiresInDays,
@@ -248,7 +265,6 @@ class DocumentsRepository {
         .download(agencySig['signature_image_path']);
 
     Uint8List? clientBytes;
-    Uint8List? vendorWitnessBytes;
     Uint8List? buyerWitnessBytes;
 
     for (final s in signers) {
@@ -261,9 +277,6 @@ class DocumentsRepository {
       switch (m['signer_role']) {
         case 'client':
           clientBytes = bytes;
-          break;
-        case 'vendor_witness':
-          vendorWitnessBytes = bytes;
           break;
         case 'buyer_witness':
           buyerWitnessBytes = bytes;
@@ -298,9 +311,7 @@ class DocumentsRepository {
 
     final clientRow = signers
         .firstWhere((s) => s['signer_role'] == 'client') as Map<String, dynamic>;
-    final vendorWitnessRow = signers
-        .firstWhere((s) => s['signer_role'] == 'vendor_witness')
-    as Map<String, dynamic>;
+
     final buyerWitnessRow = signers
         .firstWhere((s) => s['signer_role'] == 'buyer_witness')
     as Map<String, dynamic>;
@@ -308,6 +319,9 @@ class DocumentsRepository {
     final client = contract['client'] as Map<String, dynamic>;
     final property = contract['property'] as Map<String, dynamic>;
     final agency = contract['agency'] as Map<String, dynamic>;
+
+    // Load pre-uploaded directors + common seal + style for the vendor block.
+    final branding = await loadAgencyBrandingForPdf(agencyId);
 
     final input = SaleAgreementInput(
       contractId: doc['contract_id'] as String,
@@ -335,14 +349,6 @@ class DocumentsRepository {
       planMonths: contract['plan_months'] as int?,
       startDate: DateTime.parse(contract['start_date'] as String),
       agreementDate: DateTime.parse(doc['agency_signed_at'] as String),
-      vendorWitnessName: vendorWitnessRow['full_name'] as String? ?? '',
-      vendorWitnessOccupation: vendorWitnessRow['occupation'] as String?,
-      vendorWitnessAddress: vendorWitnessRow['address'] as String?,
-      vendorWitnessSignatureImage: vendorWitnessBytes,
-      vendorWitnessSignedAtDisplay: vendorWitnessRow['signed_at'] != null
-          ? _formatDate(
-          DateTime.parse(vendorWitnessRow['signed_at'] as String))
-          : null,
       buyerWitnessName: buyerWitnessRow['full_name'] as String?,
       buyerWitnessOccupation: buyerWitnessRow['occupation'] as String?,
       buyerWitnessAddress: buyerWitnessRow['address'] as String?,
@@ -355,8 +361,11 @@ class DocumentsRepository {
       clientSignedAtDisplay: clientRow['signed_at'] != null
           ? _formatDate(DateTime.parse(clientRow['signed_at'] as String))
           : null,
+      primaryDirector: branding.primaryDirector,
+      secondaryDirector: branding.secondaryDirector,
+      commonSealImage: branding.commonSealImage,
+      vendorBlockStyle: branding.vendorBlockStyle,
     );
-
     final pdfBytes = await SaleAgreementPdf.buildSignedWithAudit(
       input: input,
       auditEntries: auditEntries,
@@ -434,8 +443,9 @@ class DocumentsRepository {
 
   String _roleLabel(String role) => switch (role) {
     'client' => 'Purchaser',
-    'vendor_witness' => "Vendor's witness",
     'buyer_witness' => "Buyer's witness",
+  // Legacy: historical vendor_witness rows may still appear on old documents.
+    'vendor_witness' => "Vendor's witness (legacy)",
     _ => role,
   };
 
@@ -456,8 +466,99 @@ class DocumentsRepository {
     ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
-}
 
+  /// Loads everything needed to render the vendor block and receipt block
+  /// of an agency's PDFs:
+  ///   - up to 2 director signatures (oldest-first by created_at)
+  ///   - the common seal image bytes (if uploaded)
+  ///   - the agency's style preferences for both blocks
+  Future<AgencyPdfBranding> loadAgencyBrandingForPdf(String agencyId) async {
+    // Fetch agency-level style + seal path
+    final agencyRow = await _c
+        .from('agencies')
+        .select('common_seal_url, vendor_block_style, receipt_block_style')
+        .eq('id', agencyId)
+        .single();
+
+    // Fetch up to 2 signatures, oldest first
+    // Fetch up to 2 signatures, oldest first (for contract directors)
+    final sigs = await _c
+        .from('agency_signatures')
+        .select('signer_name, signature_image_path')
+        .eq('agency_id', agencyId)
+        .order('created_at', ascending: true)
+        .limit(2);
+
+    DirectorSignature? primary;
+    DirectorSignature? secondary;
+
+    final sigList = sigs as List;
+    if (sigList.isNotEmpty) {
+      final r = sigList[0] as Map<String, dynamic>;
+      final bytes = await _c.storage
+          .from('agency-signatures')
+          .download(r['signature_image_path'] as String);
+      primary = DirectorSignature(
+        name: r['signer_name'] as String,
+        imageBytes: bytes,
+      );
+    }
+    if (sigList.length >= 2) {
+      final r = sigList[1] as Map<String, dynamic>;
+      final bytes = await _c.storage
+          .from('agency-signatures')
+          .download(r['signature_image_path'] as String);
+      secondary = DirectorSignature(
+        name: r['signer_name'] as String,
+        imageBytes: bytes,
+      );
+    }
+
+    // Fetch the receipt signer (the one signature marked is_receipt_signer)
+    DirectorSignature? receiptSigner;
+    final receiptSignerRows = await _c
+        .from('agency_signatures')
+        .select('signer_name, signature_image_path')
+        .eq('agency_id', agencyId)
+        .eq('is_receipt_signer', true)
+        .limit(1);
+    final receiptList = receiptSignerRows as List;
+    if (receiptList.isNotEmpty) {
+      final r = receiptList[0] as Map<String, dynamic>;
+      final bytes = await _c.storage
+          .from('agency-signatures')
+          .download(r['signature_image_path'] as String);
+      receiptSigner = DirectorSignature(
+        name: r['signer_name'] as String,
+        imageBytes: bytes,
+      );
+    }
+
+    // Fetch seal bytes if present
+    Uint8List? sealBytes;
+    final sealPath = agencyRow['common_seal_url'] as String?;
+    if (sealPath != null && sealPath.isNotEmpty) {
+      try {
+        sealBytes = await _c.storage
+            .from('agency-signatures')
+            .download(sealPath);
+      } catch (_) {
+        // best-effort; if seal can't be loaded, fall back to no-seal rendering
+      }
+    }
+
+    return AgencyPdfBranding(
+      primaryDirector: primary,
+      secondaryDirector: secondary,
+      receiptSigner: receiptSigner,
+      commonSealImage: sealBytes,
+      vendorBlockStyle:
+      (agencyRow['vendor_block_style'] as String?) ?? 'directors_only',
+      receiptBlockStyle:
+      (agencyRow['receipt_block_style'] as String?) ?? 'director_only',
+    );
+  }
+}
 final documentsRepoProvider = Provider((_) => DocumentsRepository());
 
 final contractSignatureProgressProvider =

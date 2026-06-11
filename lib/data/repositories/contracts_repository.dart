@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
+import 'documents_repository.dart';
 import '../../features/documents/services/payment_receipt_pdf.dart';
 
 class GeneratedReceipt {
@@ -79,7 +80,9 @@ class ContractsRepository {
     }
 
     final receiptNo = payment['receipt_no'] as String;
-
+    // Load receipt branding (signer + seal + style) for this agency
+    final branding =
+    await DocumentsRepository().loadAgencyBrandingForPdf(agencyId);
     final input = PaymentReceiptInput(
       agencyName: agency['name'] as String,
       agencyRcNumber: agency['rc_number'] as String?,
@@ -101,11 +104,12 @@ class ContractsRepository {
       totalPaidToDateNgn: totalPaid,
       agencyRepName: profile['full_name'] as String,
       agencyRepTitle: profile['title'] as String?,
+      receiptSigner: branding.receiptSigner,
+      commonSealImage: branding.commonSealImage,
+      receiptBlockStyle: branding.receiptBlockStyle,
     );
-
     // 6. Generate PDF
     final pdfBytes = await PaymentReceiptPdf.build(input);
-
     // 7. Upload to storage
     final filename =
         '${receiptNo}_${DateTime.now().millisecondsSinceEpoch}.pdf';
@@ -154,6 +158,7 @@ class ContractsRepository {
     required int? planMonths,
     required DateTime startDate,
     String? notes,
+    bool requiresVendorSigning = false,
   }) async {
     final res = await _c.rpc('create_contract_with_schedule', params: {
       'p_client_id': clientId,
@@ -168,6 +173,7 @@ class ContractsRepository {
       'p_start_date':
       '${startDate.year.toString().padLeft(4, '0')}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
       'p_notes': notes,
+      'p_requires_vendor_signing': requiresVendorSigning,
     });
     return res as String;
   }

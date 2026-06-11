@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'sale_agreement_pdf.dart' show DirectorSignature;
+
 class PaymentReceiptInput {
   // Agency
   final String agencyName;
@@ -40,8 +42,14 @@ class PaymentReceiptInput {
   final num totalPaidToDateNgn;
 
   // Issuer
+  // Issuer
   final String agencyRepName;
   final String? agencyRepTitle;
+
+  // Receipt branding (Phase 3 — pre-embedded director signature + common seal)
+  final DirectorSignature? receiptSigner;
+  final Uint8List? commonSealImage;
+  final String receiptBlockStyle; // 'director_only' | 'seal_only' | 'director_and_seal'
 
   PaymentReceiptInput({
     required this.agencyName,
@@ -66,6 +74,9 @@ class PaymentReceiptInput {
     required this.totalPaidToDateNgn,
     required this.agencyRepName,
     this.agencyRepTitle,
+    this.receiptSigner,
+    this.commonSealImage,
+    this.receiptBlockStyle = 'director_only',
   });
 
   num get remainingBalance =>
@@ -270,39 +281,8 @@ class PaymentReceiptPdf {
             pw.SizedBox(height: 60),
 
             // ----- Signature line -----
-            pw.Row(
-              children: [
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Container(
-                        height: 40,
-                        decoration: const pw.BoxDecoration(
-                          border: pw.Border(
-                            bottom: pw.BorderSide(
-                                color: PdfColors.grey600, width: 0.5),
-                          ),
-                        ),
-                      ),
-                      pw.SizedBox(height: 4),
-                      pw.Text(i.agencyRepName,
-                          style: pw.TextStyle(
-                              fontSize: 10,
-                              fontWeight: pw.FontWeight.bold)),
-                      if (i.agencyRepTitle != null)
-                        pw.Text(i.agencyRepTitle!,
-                            style: const pw.TextStyle(
-                                fontSize: 9,
-                                color: PdfColors.grey700)),
-                      pw.Text('For: ${i.agencyName}',
-                          style: const pw.TextStyle(fontSize: 9)),
-                    ],
-                  ),
-                ),
-                pw.Expanded(child: pw.Container()),
-              ],
-            ),
+            // ----- Signature block (conditional based on receipt_block_style) -----
+            _buildReceiptSignatureBlock(i),
 
             pw.SizedBox(height: 16),
 
@@ -455,7 +435,101 @@ class PaymentReceiptPdf {
     if (million > 0) parts.add('${belowThousand(million)} million');
     if (thousand > 0) parts.add('${belowThousand(thousand)} thousand');
     if (rest > 0) parts.add(belowThousand(rest));
-
     return parts.join(' ').trim();
+  }
+
+  /// Renders the signature/branding block at the bottom of the receipt,
+  /// based on the agency's receipt_block_style setting:
+  ///   - 'director_only'      → director signature + name + "DIRECTOR" label
+  ///   - 'seal_only'          → common seal image only
+  ///   - 'director_and_seal'  → director on the left, seal on the right
+  ///
+  /// Falls back to a blank signature line + agencyRepName when no receipt
+  /// signer is configured and the style includes the director.
+  static pw.Widget _buildReceiptSignatureBlock(PaymentReceiptInput i) {
+    final style = i.receiptBlockStyle;
+    final showSigner = style == 'director_only' || style == 'director_and_seal';
+    final showSeal = style == 'seal_only' || style == 'director_and_seal';
+
+    pw.MemoryImage? sigImg;
+    if (i.receiptSigner != null) {
+      sigImg = pw.MemoryImage(i.receiptSigner!.imageBytes);
+    }
+
+    pw.MemoryImage? sealImg;
+    if (i.commonSealImage != null) {
+      sealImg = pw.MemoryImage(i.commonSealImage!);
+    }
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        if (showSigner)
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (sigImg != null)
+                  pw.Container(
+                    height: 40,
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(sigImg, height: 40),
+                  )
+                else
+                  pw.Container(
+                    height: 40,
+                    decoration: const pw.BoxDecoration(
+                      border: pw.Border(
+                        bottom: pw.BorderSide(
+                            color: PdfColors.grey600, width: 0.5),
+                      ),
+                    ),
+                  ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  (i.receiptSigner?.name ?? i.agencyRepName).toUpperCase(),
+                  style: pw.TextStyle(
+                      fontSize: 10, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.Text('DIRECTOR',
+                    style: pw.TextStyle(
+                        fontSize: 9,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColors.grey700)),
+                pw.Text('For: ${i.agencyName}',
+                    style: const pw.TextStyle(fontSize: 9)),
+              ],
+            ),
+          ),
+        if (showSeal)
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: showSigner
+                  ? pw.CrossAxisAlignment.end
+                  : pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'COMMON SEAL',
+                  style: pw.TextStyle(
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                      color: PdfColors.grey700),
+                ),
+                pw.SizedBox(height: 4),
+                if (sealImg != null)
+                  pw.Container(
+                    height: 60,
+                    alignment: showSigner
+                        ? pw.Alignment.centerRight
+                        : pw.Alignment.centerLeft,
+                    child: pw.Image(sealImg, height: 60),
+                  ),
+              ],
+            ),
+          ),
+        if (showSigner && !showSeal) pw.Expanded(child: pw.Container()),
+        if (showSeal && !showSigner) pw.Expanded(child: pw.Container()),
+      ],
+    );
   }
 }

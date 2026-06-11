@@ -28,10 +28,6 @@ List<({String email, String role, bool success})>? _emailResults;
 class _SendForSignatureDialogState
     extends ConsumerState<SendForSignatureDialog> {
   AgencySignature? _selectedSignature;
-
-  final _vendorName = TextEditingController();
-  final _vendorEmail = TextEditingController();
-
   final _buyerWitnessName = TextEditingController();
   final _buyerWitnessEmail = TextEditingController();
   bool _buyerWitnessByClient = true;
@@ -42,8 +38,6 @@ class _SendForSignatureDialogState
 
   @override
   void dispose() {
-    _vendorName.dispose();
-    _vendorEmail.dispose();
     _buyerWitnessName.dispose();
     _buyerWitnessEmail.dispose();
     super.dispose();
@@ -52,11 +46,6 @@ class _SendForSignatureDialogState
   Future<void> _submit() async {
     if (_selectedSignature == null) {
       setState(() => _error = 'Please select an agency signature');
-      return;
-    }
-    if (_vendorName.text.trim().isEmpty || !_vendorEmail.text.contains('@')) {
-      setState(() =>
-      _error = "Vendor's witness needs a full name and a valid email");
       return;
     }
     if (!_buyerWitnessByClient &&
@@ -81,13 +70,16 @@ class _SendForSignatureDialogState
 
       final detail = widget.contractDetail;
       final c = detail.contract;
-
       await ref.read(_templatesRepoProvider).createSnapshot(c.id);
-
       final sigBytes = await ref
           .read(signaturesRepoProvider)
           .downloadImage(_selectedSignature!.signatureImagePath);
-
+      // Load pre-uploaded directors + common seal + style preferences so
+      // the contract PDF embeds them automatically (unless this contract
+      // has requires_vendor_signing = true).
+      final branding = await ref
+          .read(documentsRepoProvider)
+          .loadAgencyBrandingForPdf(profile!.agencyId!);
       final pdfBytes = await SaleAgreementPdf.build(SaleAgreementInput(
         contractId: c.id,
         agencyName: detail.agencyName ?? 'Agency',
@@ -113,10 +105,13 @@ class _SendForSignatureDialogState
         planMonths: c.planMonths,
         startDate: c.startDate,
         agreementDate: DateTime.now(),
-        vendorWitnessName: _vendorName.text.trim(),
         buyerWitnessName: _buyerWitnessByClient
             ? null
             : _buyerWitnessName.text.trim(),
+        primaryDirector: branding.primaryDirector,
+        secondaryDirector: branding.secondaryDirector,
+        commonSealImage: branding.commonSealImage,
+        vendorBlockStyle: branding.vendorBlockStyle,
       ));
 
       final pdfPath = await ref.read(documentsRepoProvider).uploadUnsignedPdf(
@@ -126,8 +121,6 @@ class _SendForSignatureDialogState
         contractId: c.id,
         agencySignatureId: _selectedSignature!.id,
         unsignedPdfPath: pdfPath,
-        vendorWitnessName: _vendorName.text.trim(),
-        vendorWitnessEmail: _vendorEmail.text.trim(),
         buyerWitnessName: _buyerWitnessByClient
             ? null
             : _buyerWitnessName.text.trim(),
@@ -209,16 +202,6 @@ class _SendForSignatureDialogState
 
                 if (agencyId != null) _signaturePicker(agencyId),
                 const SizedBox(height: 16),
-
-                _sectionLabel("Vendor's witness *",
-                    helper: 'Someone from your side (a colleague, partner)'),
-                _twoField(
-                    leftLabel: 'Full name',
-                    rightLabel: 'Email',
-                    leftController: _vendorName,
-                    rightController: _vendorEmail),
-                const SizedBox(height: 14),
-
                 _sectionLabel("Buyer's witness"),
                 Row(
                   children: [
@@ -494,8 +477,9 @@ class _SendForSignatureDialogState
 
   String _roleLabel(String role) => switch (role) {
     'client' => 'Purchaser',
-    'vendor_witness' => "Vendor's witness",
     'buyer_witness' => "Buyer's witness",
+  // Legacy: historical vendor_witness rows may still appear on old documents.
+    'vendor_witness' => "Vendor's witness (legacy)",
     _ => role,
   };
 

@@ -15,7 +15,7 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../data/models/models.dart';
 import '../../../data/repositories/contract_templates_repository.dart';
 import '../../../data/services/contract_template_renderer.dart';
@@ -37,10 +37,6 @@ class SaleAgreementInput {
   // Client signature (filled in after they sign)
   final Uint8List? clientSignatureImage;
   final String? clientSignedAtDisplay;
-
-  // Vendor witness (filled in after they sign)
-  final Uint8List? vendorWitnessSignatureImage;
-  final String? vendorWitnessSignedAtDisplay;
 
   // Buyer witness (filled in after they sign)
   final Uint8List? buyerWitnessSignatureImage;
@@ -70,13 +66,15 @@ class SaleAgreementInput {
   final DateTime agreementDate;
 
   // Witnesses
-  final String vendorWitnessName;
-  final String? vendorWitnessOccupation;
-  final String? vendorWitnessAddress;
-
   final String? buyerWitnessName;
   final String? buyerWitnessOccupation;
   final String? buyerWitnessAddress;
+
+  // Vendor block (Phase 3 — pre-embedded director signatures + common seal)
+  final DirectorSignature? primaryDirector;
+  final DirectorSignature? secondaryDirector;
+  final Uint8List? commonSealImage;
+  final String vendorBlockStyle; // 'directors_only' | 'seal_only' | 'directors_and_seal'
 
   SaleAgreementInput({
     required this.contractId,
@@ -89,8 +87,6 @@ class SaleAgreementInput {
     this.agencySignerTitle,
     this.clientSignatureImage,
     this.clientSignedAtDisplay,
-    this.vendorWitnessSignatureImage,
-    this.vendorWitnessSignedAtDisplay,
     this.buyerWitnessSignatureImage,
     this.buyerWitnessSignedAtDisplay,
     required this.clientFullName,
@@ -110,13 +106,21 @@ class SaleAgreementInput {
     this.planMonths,
     required this.startDate,
     required this.agreementDate,
-    required this.vendorWitnessName,
-    this.vendorWitnessOccupation,
-    this.vendorWitnessAddress,
     this.buyerWitnessName,
     this.buyerWitnessOccupation,
     this.buyerWitnessAddress,
+    this.primaryDirector,
+    this.secondaryDirector,
+    this.commonSealImage,
+    this.vendorBlockStyle = 'directors_only',
   });
+}
+
+/// A director's signature for embedding in the contract vendor block.
+class DirectorSignature {
+  final String name;
+  final Uint8List imageBytes;
+  const DirectorSignature({required this.name, required this.imageBytes});
 }
 
 /// One signer's audit metadata for the final signed PDF.
@@ -159,6 +163,18 @@ class SaleAgreementPdf {
     if (i.agencySignatureImage != null) {
       agencySig = pw.MemoryImage(i.agencySignatureImage!);
     }
+    pw.MemoryImage? primarySig;
+    pw.MemoryImage? secondarySig;
+    pw.MemoryImage? sealImg;
+    if (i.primaryDirector != null) {
+      primarySig = pw.MemoryImage(i.primaryDirector!.imageBytes);
+    }
+    if (i.secondaryDirector != null) {
+      secondarySig = pw.MemoryImage(i.secondaryDirector!.imageBytes);
+    }
+    if (i.commonSealImage != null) {
+      sealImg = pw.MemoryImage(i.commonSealImage!);
+    }
 
     // ---- Cover page ----
     doc.addPage(_coverPage(i, ctx));
@@ -182,7 +198,12 @@ class SaleAgreementPdf {
           pw.SizedBox(height: 18),
           _secondSchedule(i, ctx),
           pw.SizedBox(height: 24),
-          _signatureBlocks(i, agencySig, null, null, null),
+          _signatureBlocks(
+            i, agencySig, null, null,
+            primaryDirectorSig: primarySig,
+            secondaryDirectorSig: secondarySig,
+            sealImage: sealImg,
+          ),
         ],
       ),
     );
@@ -207,7 +228,6 @@ class SaleAgreementPdf {
 
     pw.MemoryImage? agencySig;
     pw.MemoryImage? clientSig;
-    pw.MemoryImage? vendorWitSig;
     pw.MemoryImage? buyerWitSig;
 
     if (input.agencySignatureImage != null) {
@@ -216,11 +236,20 @@ class SaleAgreementPdf {
     if (input.clientSignatureImage != null) {
       clientSig = pw.MemoryImage(input.clientSignatureImage!);
     }
-    if (input.vendorWitnessSignatureImage != null) {
-      vendorWitSig = pw.MemoryImage(input.vendorWitnessSignatureImage!);
-    }
     if (input.buyerWitnessSignatureImage != null) {
       buyerWitSig = pw.MemoryImage(input.buyerWitnessSignatureImage!);
+    }
+    pw.MemoryImage? primarySig;
+    pw.MemoryImage? secondarySig;
+    pw.MemoryImage? sealImg;
+    if (input.primaryDirector != null) {
+      primarySig = pw.MemoryImage(input.primaryDirector!.imageBytes);
+    }
+    if (input.secondaryDirector != null) {
+      secondarySig = pw.MemoryImage(input.secondaryDirector!.imageBytes);
+    }
+    if (input.commonSealImage != null) {
+      sealImg = pw.MemoryImage(input.commonSealImage!);
     }
 
     // Cover
@@ -246,7 +275,11 @@ class SaleAgreementPdf {
           _secondSchedule(input, ctx),
           pw.SizedBox(height: 24),
           _signatureBlocks(
-              input, agencySig, clientSig, vendorWitSig, buyerWitSig),
+            input, agencySig, clientSig, buyerWitSig,
+            primaryDirectorSig: primarySig,
+            secondaryDirectorSig: secondarySig,
+            sealImage: sealImg,
+          ),
           pw.SizedBox(height: 18),
           _preparedBy(ctx),
         ],
@@ -635,9 +668,11 @@ class SaleAgreementPdf {
       SaleAgreementInput i,
       pw.MemoryImage? agencySig,
       pw.MemoryImage? clientSig,
-      pw.MemoryImage? vendorWitSig,
-      pw.MemoryImage? buyerWitSig,
-      ) {
+      pw.MemoryImage? buyerWitSig, {
+        pw.MemoryImage? primaryDirectorSig,
+        pw.MemoryImage? secondaryDirectorSig,
+        pw.MemoryImage? sealImage,
+      }) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -655,23 +690,8 @@ class SaleAgreementPdf {
         pw.Text('By the within-named VENDOR:',
             style: const pw.TextStyle(fontSize: 10)),
         pw.SizedBox(height: 6),
-        pw.Text(
-          'THE COMMON SEAL OF ${i.agencyName.toUpperCase()} IS ATTACHED TO THIS CONTRACT OF SALE OF LAND',
-          style: pw.TextStyle(
-              fontSize: 10, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 6),
-        pw.Text('IN THE PRESENCE OF:',
-            style: pw.TextStyle(
-                fontSize: 10, fontWeight: pw.FontWeight.bold)),
-        pw.SizedBox(height: 14),
-        // Two directors line
-        pw.Row(
-          children: [
-            pw.Expanded(child: _directorSlot(i, agencySig, isPrimary: true)),
-            pw.SizedBox(width: 32),
-            pw.Expanded(child: _directorSlot(i, null, isPrimary: false)),
-          ],
+        ..._vendorExecutionBlock(
+          i, agencySig, primaryDirectorSig, secondaryDirectorSig, sealImage,
         ),
         pw.SizedBox(height: 24),
         // ---- Purchaser ----
@@ -714,17 +734,6 @@ class SaleAgreementPdf {
           children: [
             pw.Expanded(
               child: _witnessSlot(
-                heading: "Vendor's Witness",
-                name: i.vendorWitnessName,
-                occupation: i.vendorWitnessOccupation,
-                address: i.vendorWitnessAddress,
-                signature: vendorWitSig,
-                signedDate: i.vendorWitnessSignedAtDisplay,
-              ),
-            ),
-            pw.SizedBox(width: 28),
-            pw.Expanded(
-              child: _witnessSlot(
                 heading: "Purchaser's Witness",
                 name: i.buyerWitnessName,
                 occupation: i.buyerWitnessOccupation,
@@ -733,23 +742,89 @@ class SaleAgreementPdf {
                 signedDate: i.buyerWitnessSignedAtDisplay,
               ),
             ),
+            pw.Expanded(child: pw.SizedBox()),
           ],
         ),
       ],
     );
   }
 
-  static pw.Widget _directorSlot(
-      SaleAgreementInput i, pw.MemoryImage? sig,
-      {required bool isPrimary}) {
+  /// Vendor execution block: conditionally renders the seal text/image,
+  /// directors, or both — based on the agency's `vendor_block_style` setting.
+  ///
+  /// Returns a list of widgets so the caller can spread it into a Column.
+  static List<pw.Widget> _vendorExecutionBlock(
+      SaleAgreementInput i,
+      pw.MemoryImage? agencySig,
+      pw.MemoryImage? primaryDirectorSig,
+      pw.MemoryImage? secondaryDirectorSig,
+      pw.MemoryImage? sealImage,
+      ) {
+    final style = i.vendorBlockStyle;
+    final showSeal =
+        style == 'seal_only' || style == 'directors_and_seal';
+    final showDirectors =
+        style == 'directors_only' || style == 'directors_and_seal';
+
+    // Primary slot prefers the pre-uploaded director's signature image, but
+    // falls back to the live agency signature when the contract requires
+    // vendor signing (the old flow where a director signs via signing link).
+    final primarySigToShow = primaryDirectorSig ?? agencySig;
+
+    return [
+      // Seal text + image (when style includes seal)
+      if (showSeal) ...[
+        pw.Text(
+          'THE COMMON SEAL OF ${i.agencyName.toUpperCase()} IS ATTACHED TO THIS CONTRACT OF SALE OF LAND',
+          style: pw.TextStyle(
+              fontSize: 10, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 8),
+        if (sealImage != null)
+          pw.Container(
+            height: 60,
+            alignment: pw.Alignment.centerLeft,
+            child: pw.Image(sealImage, height: 60),
+          ),
+        pw.SizedBox(height: 8),
+      ],
+      // Directors row (when style includes directors)
+      if (showDirectors) ...[
+        pw.Text('IN THE PRESENCE OF:',
+            style: pw.TextStyle(
+                fontSize: 10, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 14),
+        pw.Row(
+          children: [
+            pw.Expanded(
+              child: _directorSlot(i.primaryDirector, primarySigToShow),
+            ),
+            pw.SizedBox(width: 32),
+            pw.Expanded(
+              child: _directorSlot(i.secondaryDirector, secondaryDirectorSig),
+            ),
+          ],
+        ),
+      ],
+    ];
+  }
+
+  /// Renders one director's slot in the vendor signature block.
+  ///
+  /// If a [DirectorSignature] is provided, embeds the signature image and
+  /// name. Otherwise renders a blank signature line and underscores for
+  /// the name — used when no director is configured or when the contract
+  /// requires live signing.
+  static pw.Widget _directorSlot(DirectorSignature? director,
+      pw.MemoryImage? signatureImage) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        if (sig != null)
+        if (signatureImage != null)
           pw.Container(
             height: 36,
             alignment: pw.Alignment.centerLeft,
-            child: pw.Image(sig, height: 36),
+            child: pw.Image(signatureImage, height: 36),
           )
         else
           pw.Container(
@@ -763,9 +838,7 @@ class SaleAgreementPdf {
           ),
         pw.SizedBox(height: 4),
         pw.Text(
-            isPrimary
-                ? i.agencySignerName
-                : '____________________________',
+            director?.name.toUpperCase() ?? '____________________________',
             style: pw.TextStyle(
                 fontSize: 9, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 2),
@@ -1089,6 +1162,7 @@ class _RenderableClause {
     this.number,
   });
 }
+
 class _LoadedTemplate {
   final List<_RenderableClause> clauses;
   final String? customAppendix;

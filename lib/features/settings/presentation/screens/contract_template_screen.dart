@@ -765,7 +765,6 @@ class _ContractTemplateScreenState
         planMonths: detail['plan_months'] as int?,
         startDate: DateTime.parse(detail['start_date'] as String),
         agreementDate: DateTime.now(),
-        vendorWitnessName: 'Preview Witness',
       );
 
       final Uint8List pdfBytes = await SaleAgreementPdf.build(input);

@@ -182,10 +182,6 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
       'client' =>
       '${ctx.agencyName} is selling$property$loc to you for $price. '
           'Please review and sign the sale agreement.',
-      'vendor_witness' =>
-      '${ctx.agencyName} is selling$property$loc to '
-          '${ctx.clientFullName ?? "the purchaser"} for $price. '
-          "You're witnessing on the vendor's behalf.",
       'buyer_witness' =>
       '${ctx.agencyName} is selling$property$loc to '
           '${ctx.clientFullName ?? "the purchaser"} for $price. '
@@ -499,8 +495,7 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
         const SizedBox(height: 16),
 
         // Witness fields (occupation + address) — only for witnesses
-        if (ctx.signerRole == 'vendor_witness' ||
-            ctx.signerRole == 'buyer_witness') ...[
+        if (ctx.signerRole == 'buyer_witness') ...[
           const Text('Your details',
               style: TextStyle(
                   fontSize: 12, fontWeight: FontWeight.w500)),
@@ -772,7 +767,6 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
   }
 
   String _nextRoleLabel(String? role) => switch (role) {
-    'vendor_witness' => "Vendor's witness",
     'buyer_witness' => "Buyer's witness",
     _ => 'next party',
   };

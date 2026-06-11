@@ -15,8 +15,8 @@ class AgencySignature {
   final String signatureImagePath;
   final String method;
   final bool isDefault;
+  final bool isReceiptSigner;
   final DateTime createdAt;
-
   AgencySignature({
     required this.id,
     required this.agencyId,
@@ -26,6 +26,7 @@ class AgencySignature {
     required this.signatureImagePath,
     required this.method,
     required this.isDefault,
+    required this.isReceiptSigner,
     required this.createdAt,
   });
 
@@ -38,6 +39,7 @@ class AgencySignature {
     signatureImagePath: m['signature_image_path'] as String,
     method: m['method'] as String,
     isDefault: m['is_default'] as bool,
+    isReceiptSigner: (m['is_receipt_signer'] as bool?) ?? false,
     createdAt: DateTime.parse(m['created_at'] as String),
   );
 }
@@ -65,6 +67,7 @@ class SignaturesRepository {
     required Uint8List imageBytes,
     required String method, // 'drawn' or 'uploaded'
     bool isDefault = false,
+    bool isReceiptSigner = false,
   }) async {
     // 1. Upload image to agency-signatures bucket
     //    Path: <agency_id>/<random>.png
@@ -82,6 +85,7 @@ class SignaturesRepository {
     );
 
     // 2. If isDefault, unset any existing default first
+    // 2a. If isDefault, unset any existing default first
     if (isDefault) {
       await _c
           .from('agency_signatures')
@@ -89,7 +93,14 @@ class SignaturesRepository {
           .eq('agency_id', agencyId)
           .eq('is_default', true);
     }
-
+    // 2b. If isReceiptSigner, unset any existing receipt signer first
+    if (isReceiptSigner) {
+      await _c
+          .from('agency_signatures')
+          .update({'is_receipt_signer': false})
+          .eq('agency_id', agencyId)
+          .eq('is_receipt_signer', true);
+    }
     // 3. Insert metadata row
     final row = await _c.from('agency_signatures').insert({
       'agency_id': agencyId,
@@ -99,8 +110,8 @@ class SignaturesRepository {
       'signature_image_path': storagePath,
       'method': method,
       'is_default': isDefault,
+      'is_receipt_signer': isReceiptSigner,
     }).select().single();
-
     return AgencySignature.fromMap(row);
   }
 
@@ -111,11 +122,24 @@ class SignaturesRepository {
         .update({'is_default': false})
         .eq('agency_id', agencyId)
         .eq('is_default', true);
-
     // Set new one
     await _c
         .from('agency_signatures')
         .update({'is_default': true})
+        .eq('id', signatureId);
+  }
+
+  Future<void> setReceiptSigner(String agencyId, String signatureId) async {
+    // Clear current receipt signer
+    await _c
+        .from('agency_signatures')
+        .update({'is_receipt_signer': false})
+        .eq('agency_id', agencyId)
+        .eq('is_receipt_signer', true);
+    // Set new one
+    await _c
+        .from('agency_signatures')
+        .update({'is_receipt_signer': true})
         .eq('id', signatureId);
   }
 
