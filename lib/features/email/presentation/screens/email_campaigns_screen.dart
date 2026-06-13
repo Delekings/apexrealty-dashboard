@@ -2,10 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_repository.dart';
 import '../widgets/new_campaign_dialog.dart';
+import 'email_campaign_detail_screen.dart';
 import 'package:go_router/go_router.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
@@ -258,16 +258,25 @@ class _EmailCampaignsScreenState extends ConsumerState<EmailCampaignsScreen> {
               ],
             ),
           ),
-          for (final c in campaigns)
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 12),
-              decoration: const BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: AppColors.border, width: 0.5),
-                ),
-              ),
-              child: Row(
+    for (final c in campaigns)
+    InkWell(
+    onTap: () {
+    Navigator.of(context).push(
+    MaterialPageRoute(
+    builder: (_) =>
+    EmailCampaignDetailScreen(campaignId: c.id),
+    ),
+    );
+    },
+    child: Container(
+    padding: const EdgeInsets.symmetric(
+    horizontal: 14, vertical: 12),
+    decoration: const BoxDecoration(
+    border: Border(
+    top: BorderSide(color: AppColors.border, width: 0.5),
+    ),
+    ),
+    child: Row(
                 children: [
                   Expanded(
                     flex: 4,
@@ -310,13 +319,13 @@ class _EmailCampaignsScreenState extends ConsumerState<EmailCampaignsScreen> {
                     ),
                   ),
                 ],
-              ),
-            ),
+    ),
+    ),
+    ),
         ],
       ),
     );
   }
-
   Widget _statusBadge(String status) {
     final (color, bg, label) = switch (status) {
       'draft' => (AppColors.muted, AppColors.bg2, 'Draft'),

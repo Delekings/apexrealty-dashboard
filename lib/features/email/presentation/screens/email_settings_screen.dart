@@ -4,12 +4,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_repository.dart';
+import '../widgets/email_engagement_row.dart';
 import 'package:go_router/go_router.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
 final _myConfigProvider = FutureProvider.autoDispose((ref) async {
   return ref.read(_emailRepoProvider).getMyAgencyConfig();
+});
+
+/// Fetches the 50 most recent email_messages + their events for the agency.
+final _recentActivityProvider = FutureProvider.autoDispose((ref) async {
+  return ref.read(_emailRepoProvider).recentAgencyEmailActivity(limit: 50);
 });
 
 class EmailSettingsScreen extends ConsumerStatefulWidget {
@@ -20,15 +26,20 @@ class EmailSettingsScreen extends ConsumerStatefulWidget {
       _EmailSettingsScreenState();
 }
 
-class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen> {
+class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
+    with SingleTickerProviderStateMixin {
   final _fromNameCtrl = TextEditingController();
   final _replyToCtrl = TextEditingController();
   bool _saving = false;
   String? _error;
   bool _initialised = false;
+  late final TabController _tabController =
+  TabController(length: 2, vsync: this);
+  String _activityFilter = 'all'; // all | campaign | signing_request | automation
 
   @override
   void dispose() {
+    _tabController.dispose();
     _fromNameCtrl.dispose();
     _replyToCtrl.dispose();
     super.dispose();
@@ -85,33 +96,157 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen> {
           onPressed: () => context.go('/'),
         ),
         title: const Text('Email settings'),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: AppColors.brand,
+          unselectedLabelColor: AppColors.muted,
+          indicatorColor: AppColors.brand,
+          labelStyle:
+          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          tabs: const [
+            Tab(text: 'Settings'),
+            Tab(text: 'Activity'),
+          ],
+        ),
       ),
-      body: cfgAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-            child: Text('Failed: $e',
-                style: const TextStyle(color: AppColors.danger))),
-        data: (cfg) {
-          _populate(cfg);
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _infoCard(),
-                    const SizedBox(height: 20),
-                    _sendingCard(),
-                    const SizedBox(height: 20),
-                    _domainCard(cfg),
-                  ],
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // ----- Settings tab (the existing content) -----
+          cfgAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(
+                child: Text('Failed: $e',
+                    style: const TextStyle(color: AppColors.danger))),
+            data: (cfg) {
+              _populate(cfg);
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _infoCard(),
+                        const SizedBox(height: 20),
+                        _sendingCard(),
+                        const SizedBox(height: 20),
+                        _domainCard(cfg),
+                      ],
+                    ),
+                  ),
                 ),
+              );
+            },
+          ),
+          // ----- Activity tab (new) -----
+          _buildActivityTab(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActivityTab() {
+    final activityAsync = ref.watch(_recentActivityProvider);
+    return Column(
+      children: [
+        // Filter chips row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              bottom: BorderSide(color: AppColors.border, width: 0.5),
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _filterChip('all', 'All'),
+                const SizedBox(width: 8),
+                _filterChip('campaign', 'Campaigns'),
+                const SizedBox(width: 8),
+                _filterChip('signing_request', 'Signing'),
+                const SizedBox(width: 8),
+                _filterChip('automation', 'Automations'),
+              ],
+            ),
+          ),
+        ),
+        // List
+        Expanded(
+          child: activityAsync.when(
+            loading: () =>
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            error: (e, _) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Could not load activity: $e',
+                    style: const TextStyle(color: AppColors.muted)),
               ),
             ),
-          );
-        },
+            data: (all) {
+              final filtered = _activityFilter == 'all'
+                  ? all
+                  : all
+                  .where((e) => e.message.emailType == _activityFilter)
+                  .toList();
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      _activityFilter == 'all'
+                          ? 'No emails have been sent yet.'
+                          : 'No ${_activityFilter.replaceAll("_", " ")} emails yet.',
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
+                  ),
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.invalidate(_recentActivityProvider);
+                  await ref.read(_recentActivityProvider.future);
+                },
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) =>
+                      EmailEngagementRow(engagement: filtered[i]),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _filterChip(String value, String label) {
+    final selected = _activityFilter == value;
+    return InkWell(
+      onTap: () => setState(() => _activityFilter = value),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.brand : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.brand : AppColors.border,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : AppColors.muted,
+          ),
+        ),
       ),
     );
   }

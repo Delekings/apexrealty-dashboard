@@ -1,15 +1,31 @@
 // lib/features/contracts/presentation/widgets/signature_progress_card.dart
 
+// lib/features/contracts/presentation/widgets/signature_progress_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../data/repositories/documents_repository.dart';
+import '../../../../data/repositories/email_repository.dart';
 import '../../../../data/services/supabase_service.dart';
 import '../../../auth/providers/auth_providers.dart';
+import '../../../email/presentation/widgets/email_engagement_row.dart';
+
+final _emailRepoProvider = Provider((_) => EmailRepository());
+
+/// Engagement for a specific document — fetches all email_messages and
+/// their event histories where related_entity_type='document' and
+/// related_entity_id=<documentId>.
+final _docEmailEngagementProvider =
+FutureProvider.family<List<EmailEngagement>, String>(
+      (ref, documentId) async {
+    return ref
+        .read(_emailRepoProvider)
+        .engagementForEntity('document', documentId);
+  },
+);
 
 class SignatureProgressCard extends ConsumerStatefulWidget {
   final SignatureProgress progress;
@@ -285,8 +301,84 @@ class _SignatureProgressCardState
               ],
             ),
           ],
+          // ----- Email engagement -----
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 12),
+          _buildEmailEngagementSection(p.documentId),
         ],
       ),
+    );
+  }
+
+  /// Renders the email engagement section: per-signer email status with
+  /// opens, clicks, bounces. Tap to expand individual events.
+  Widget _buildEmailEngagementSection(String documentId) {
+    final async = ref.watch(_docEmailEngagementProvider(documentId));
+    return async.when(
+      loading: () => const SizedBox(
+        height: 40,
+        child: Center(
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      error: (e, _) => Text(
+        'Could not load email engagement: $e',
+        style: const TextStyle(fontSize: 11, color: AppColors.muted),
+      ),
+      data: (engagements) {
+        if (engagements.isEmpty) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.mark_email_read_outlined,
+                      size: 14, color: AppColors.muted),
+                  SizedBox(width: 6),
+                  Text('Email engagement',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.muted)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'No emails have been sent for this document yet.',
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
+              ),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.mark_email_read_outlined,
+                    size: 14, color: AppColors.brand),
+                const SizedBox(width: 6),
+                const Text('Email engagement',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Text(
+                  '${engagements.length} sent',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.muted),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...engagements.map((e) => EmailEngagementRow(engagement: e)),
+          ],
+        );
+      },
     );
   }
 }
@@ -693,3 +785,4 @@ class _AddWitnessDialogState extends ConsumerState<_AddWitnessDialog> {
     );
   }
 }
+

@@ -71,39 +71,58 @@ class EmailAutomation {
 
 class EmailMessage {
   final String id;
-  final String campaignId;
+  final String? campaignId; // nullable for non-campaign sends
   final String? clientId;
   final String toEmail;
   final String? toName;
+  final String? subject;
+  final String emailType; // campaign | signing_request | automation | invite | receipt | transactional
+  final String? relatedEntityType; // document | campaign | payment | etc.
+  final String? relatedEntityId;
+  final String? providerMessageId;
   final String status;
   final DateTime? sentAt;
   final DateTime? deliveredAt;
   final DateTime? openedAt;
+  final DateTime? clickedAt;
+  final DateTime? bouncedAt;
   final DateTime? failedAt;
+  final String? bounceType;
   final String? errorMessage;
   final DateTime createdAt;
-
   EmailMessage({
     required this.id,
-    required this.campaignId,
     required this.toEmail,
     required this.status,
+    required this.emailType,
     required this.createdAt,
+    this.campaignId,
     this.clientId,
     this.toName,
+    this.subject,
+    this.relatedEntityType,
+    this.relatedEntityId,
+    this.providerMessageId,
     this.sentAt,
     this.deliveredAt,
     this.openedAt,
+    this.clickedAt,
+    this.bouncedAt,
     this.failedAt,
+    this.bounceType,
     this.errorMessage,
   });
-
   factory EmailMessage.fromMap(Map<String, dynamic> m) => EmailMessage(
     id: m['id'] as String,
-    campaignId: m['campaign_id'] as String,
+    campaignId: m['campaign_id'] as String?,
     clientId: m['client_id'] as String?,
     toEmail: m['to_email'] as String,
     toName: m['to_name'] as String?,
+    subject: m['subject'] as String?,
+    emailType: (m['email_type'] as String?) ?? 'campaign',
+    relatedEntityType: m['related_entity_type'] as String?,
+    relatedEntityId: m['related_entity_id'] as String?,
+    providerMessageId: m['provider_message_id'] as String?,
     status: m['status'] as String,
     sentAt: m['sent_at'] != null
         ? DateTime.parse(m['sent_at'] as String)
@@ -114,12 +133,106 @@ class EmailMessage {
     openedAt: m['opened_at'] != null
         ? DateTime.parse(m['opened_at'] as String)
         : null,
+    clickedAt: m['clicked_at'] != null
+        ? DateTime.parse(m['clicked_at'] as String)
+        : null,
+    bouncedAt: m['bounced_at'] != null
+        ? DateTime.parse(m['bounced_at'] as String)
+        : null,
     failedAt: m['failed_at'] != null
         ? DateTime.parse(m['failed_at'] as String)
         : null,
+    bounceType: m['bounce_type'] as String?,
     errorMessage: m['error_message'] as String?,
     createdAt: DateTime.parse(m['created_at'] as String),
   );
+
+  /// True if this email made it to the recipient's inbox
+  bool get wasDelivered => deliveredAt != null || openedAt != null || clickedAt != null;
+
+  /// True if any meaningful engagement (open or click) happened
+  bool get wasEngaged => openedAt != null || clickedAt != null;
+
+  /// Display label for the status (for UI)
+  String get statusLabel => switch (status) {
+    'queued' => 'Queued',
+    'sending' => 'Sending',
+    'sent' => 'Sent',
+    'delivered' => 'Delivered',
+    'opened' => 'Opened',
+    'clicked' => 'Clicked',
+    'bounced' => 'Bounced',
+    'complained' => 'Marked as spam',
+    'failed' => 'Failed',
+    'unsubscribed' => 'Unsubscribed',
+    _ => status,
+  };
+}
+
+/// Per-event history for an email_messages row.
+/// Captures every open, click, bounce, etc. — not just the first one.
+class EmailMessageEvent {
+  final String id;
+  final String messageId;
+  final String agencyId;
+  final String eventType; // delivered | opened | clicked | bounced | complained | delivery_delayed | failed
+  final DateTime occurredAt;
+  final String? linkUrl; // only for clicks
+  final String? userAgent;
+  final String? ip;
+  EmailMessageEvent({
+    required this.id,
+    required this.messageId,
+    required this.agencyId,
+    required this.eventType,
+    required this.occurredAt,
+    this.linkUrl,
+    this.userAgent,
+    this.ip,
+  });
+  factory EmailMessageEvent.fromMap(Map<String, dynamic> m) =>
+      EmailMessageEvent(
+        id: m['id'] as String,
+        messageId: m['message_id'] as String,
+        agencyId: m['agency_id'] as String,
+        eventType: m['event_type'] as String,
+        occurredAt: DateTime.parse(m['occurred_at'] as String),
+        linkUrl: m['link_url'] as String?,
+        userAgent: m['user_agent'] as String?,
+        ip: m['ip'] as String?,
+      );
+
+  String get eventLabel => switch (eventType) {
+    'delivered' => 'Delivered',
+    'opened' => 'Opened',
+    'clicked' => 'Clicked link',
+    'bounced' => 'Bounced',
+    'complained' => 'Marked as spam',
+    'delivery_delayed' => 'Delivery delayed',
+    'failed' => 'Failed',
+    _ => eventType,
+  };
+}
+
+/// Returned by engagementForEntity — bundles a single email with all its events.
+class EmailEngagement {
+  final EmailMessage message;
+  final List<EmailMessageEvent> events;
+  EmailEngagement({required this.message, required this.events});
+
+  /// How many times the email was opened
+  int get openCount =>
+      events.where((e) => e.eventType == 'opened').length;
+
+  /// How many click events (could be multiple clicks of same or different links)
+  int get clickCount =>
+      events.where((e) => e.eventType == 'clicked').length;
+
+  /// Unique links clicked
+  Set<String> get uniqueLinksClicked => events
+      .where((e) => e.eventType == 'clicked' && e.linkUrl != null)
+      .map((e) => e.linkUrl!)
+      .toSet();
 }
 
 class EmailProviderConfig {
@@ -605,6 +718,151 @@ class EmailRepository {
       msg = body.toString();
     }
     return msg;
+  }
+
+  // ----------------------------------------------------------
+  // Engagement tracking
+  // ----------------------------------------------------------
+
+  /// Returns full engagement data for a single email_messages row:
+  /// the message itself + all events captured against it.
+  Future<EmailEngagement?> engagementForMessage(String messageId) async {
+    final msgRow = await _c
+        .from('email_messages')
+        .select()
+        .eq('id', messageId)
+        .maybeSingle();
+    if (msgRow == null) return null;
+
+    final eventRows = await _c
+        .from('email_message_events')
+        .select()
+        .eq('message_id', messageId)
+        .order('occurred_at', ascending: true);
+
+    return EmailEngagement(
+      message: EmailMessage.fromMap(msgRow),
+      events: (eventRows as List)
+          .map((e) => EmailMessageEvent.fromMap(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// Returns engagement for every email related to a given entity.
+  /// Example: engagementForEntity('document', docId) returns all signing
+  /// emails sent for that document, each with their own event history.
+  Future<List<EmailEngagement>> engagementForEntity(
+      String entityType, String entityId) async {
+    final msgRows = await _c
+        .from('email_messages')
+        .select()
+        .eq('related_entity_type', entityType)
+        .eq('related_entity_id', entityId)
+        .order('created_at', ascending: false);
+
+    final messages = (msgRows as List)
+        .map((m) => EmailMessage.fromMap(m as Map<String, dynamic>))
+        .toList();
+
+    if (messages.isEmpty) return [];
+
+    // Batch-fetch events for all these messages in one query
+    final messageIds = messages.map((m) => m.id).toList();
+    final eventRows = await _c
+        .from('email_message_events')
+        .select()
+        .inFilter('message_id', messageIds)
+        .order('occurred_at', ascending: true);
+
+    // Group events by message_id
+    final eventsByMessageId = <String, List<EmailMessageEvent>>{};
+    for (final r in eventRows as List) {
+      final e = EmailMessageEvent.fromMap(r as Map<String, dynamic>);
+      eventsByMessageId.putIfAbsent(e.messageId, () => []).add(e);
+    }
+
+    return messages
+        .map((m) => EmailEngagement(
+      message: m,
+      events: eventsByMessageId[m.id] ?? [],
+    ))
+        .toList();
+  }
+
+  /// Returns engagement for every message in a campaign. Used by the
+  /// campaign detail screen.
+  Future<List<EmailEngagement>> engagementForCampaign(String campaignId) async {
+    final msgRows = await _c
+        .from('email_messages')
+        .select()
+        .eq('campaign_id', campaignId)
+        .order('created_at', ascending: false);
+
+    final messages = (msgRows as List)
+        .map((m) => EmailMessage.fromMap(m as Map<String, dynamic>))
+        .toList();
+
+    if (messages.isEmpty) return [];
+
+    final messageIds = messages.map((m) => m.id).toList();
+    final eventRows = await _c
+        .from('email_message_events')
+        .select()
+        .inFilter('message_id', messageIds)
+        .order('occurred_at', ascending: true);
+
+    final eventsByMessageId = <String, List<EmailMessageEvent>>{};
+    for (final r in eventRows as List) {
+      final e = EmailMessageEvent.fromMap(r as Map<String, dynamic>);
+      eventsByMessageId.putIfAbsent(e.messageId, () => []).add(e);
+    }
+
+    return messages
+        .map((m) => EmailEngagement(
+      message: m,
+      events: eventsByMessageId[m.id] ?? [],
+    ))
+        .toList();
+  }
+
+  /// Recent email activity across the entire agency (for the global activity
+  /// feed at Settings → Email → Activity).
+  Future<List<EmailEngagement>> recentAgencyEmailActivity({int limit = 50}) async {
+    final agencyId = await _myAgencyId();
+    if (agencyId == null) return [];
+
+    final msgRows = await _c
+        .from('email_messages')
+        .select()
+        .eq('agency_id', agencyId)
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    final messages = (msgRows as List)
+        .map((m) => EmailMessage.fromMap(m as Map<String, dynamic>))
+        .toList();
+
+    if (messages.isEmpty) return [];
+
+    final messageIds = messages.map((m) => m.id).toList();
+    final eventRows = await _c
+        .from('email_message_events')
+        .select()
+        .inFilter('message_id', messageIds)
+        .order('occurred_at', ascending: true);
+
+    final eventsByMessageId = <String, List<EmailMessageEvent>>{};
+    for (final r in eventRows as List) {
+      final e = EmailMessageEvent.fromMap(r as Map<String, dynamic>);
+      eventsByMessageId.putIfAbsent(e.messageId, () => []).add(e);
+    }
+
+    return messages
+        .map((m) => EmailEngagement(
+      message: m,
+      events: eventsByMessageId[m.id] ?? [],
+    ))
+        .toList();
   }
 
   Future<String?> _myAgencyId() async {
