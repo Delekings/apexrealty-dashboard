@@ -137,6 +137,7 @@ Deno.serve(async (req) => {
         const campaignId = campaign.id as string;
 
         // Bulk-insert message rows (status: sending)
+        // Bulk-insert message rows (status: sending)
         const messageRows = eligible.map((r) => ({
             campaign_id: campaignId,
             agency_id: agencyId,
@@ -144,6 +145,10 @@ Deno.serve(async (req) => {
             to_email: r.email,
             to_name: r.full_name,
             status: "sending",
+            email_type: "campaign",
+            related_entity_type: "campaign",
+            related_entity_id: campaignId,
+            subject: body.subject,
         }));
         const { data: insertedMessages, error: mErr } = await supabase
             .from("email_messages")
@@ -178,6 +183,7 @@ Deno.serve(async (req) => {
                         subject: personalisedSubject,
                         html: personalisedHtml,
                         reply_to: replyTo,
+                        tracking: { opens: true, clicks: true },
                     }),
                 });
 

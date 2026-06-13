@@ -170,7 +170,12 @@ async function processAutomation(
             to_email: r.email,
             to_name: r.full_name,
             status: "sending",
+            email_type: "automation",
+            related_entity_type: "automation",
+            related_entity_id: auto.id,
+            subject: auto.subject_template,
         }));
+
         const { data: messages, error: mErr } = await supabase
             .from("email_messages")
             .insert(messageRows)
@@ -207,6 +212,7 @@ async function processAutomation(
                         subject: personalisedSubject,
                         html: personalisedHtml,
                         reply_to: replyTo,
+                        tracking: { opens: true, clicks: true },
                     }),
                 });
 

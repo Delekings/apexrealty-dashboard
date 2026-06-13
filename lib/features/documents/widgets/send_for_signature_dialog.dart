@@ -134,6 +134,7 @@ class _SendForSignatureDialogState
           '${detail.propertyTitle}, ${detail.propertyLocation}';
       final emailResults = await ref.read(documentsRepoProvider).sendSigningEmails(
         contractId: c.id,
+        agencyId: profile!.agencyId!,
         agencyName: detail.agencyName ?? 'Agency',
         propertyLabel: propertyLabel,
         contractNo: c.contractNo,

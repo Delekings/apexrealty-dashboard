@@ -402,6 +402,7 @@ class DocumentsRepository {
   /// the caller can show which sends worked.
   Future<List<({String email, String role, bool success})>> sendSigningEmails({
     required String contractId,
+    required String agencyId,
     required String agencyName,
     required String propertyLabel,
     required String contractNo,
@@ -409,15 +410,11 @@ class DocumentsRepository {
   }) async {
     final progress = await progressForContract(contractId);
     if (progress == null) return [];
-
     final results = <({String email, String role, bool success})>[];
-
     for (final signer in progress.signers) {
       if (signer.email == null || signer.email!.isEmpty) continue;
       if (signer.signingToken == null) continue;
-
       final signingUrl = '$appOrigin/#/sign/${signer.signingToken}';
-
       try {
         await _c.functions.invoke(
           'send-signing-request',
@@ -430,6 +427,11 @@ class DocumentsRepository {
             'property_label': propertyLabel,
             'contract_no': contractNo,
             'expires_at': progress.expiresAt?.toIso8601String(),
+            // Used by the edge function to insert an email_messages row
+            // so webhook engagement events can be matched back to this send.
+            'agency_id': agencyId,
+            'document_id': progress.documentId,
+            'signer_id': signer.id,
           },
         );
         results.add((email: signer.email!, role: signer.signerRole, success: true));
@@ -437,10 +439,8 @@ class DocumentsRepository {
         results.add((email: signer.email!, role: signer.signerRole, success: false));
       }
     }
-
     return results;
   }
-
   String _roleLabel(String role) => switch (role) {
     'client' => 'Purchaser',
     'buyer_witness' => "Buyer's witness",

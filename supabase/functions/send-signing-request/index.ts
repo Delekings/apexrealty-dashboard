@@ -1,4 +1,7 @@
 // supabase/functions/send-signing-request/index.ts
+// supabase/functions/send-signing-request/index.ts
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
 const RESEND_API_URL = "https://api.resend.com/emails";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
@@ -6,11 +9,16 @@ interface Payload {
     to_email: string;
     to_name: string;
     signing_url: string;
-    signer_role: "client" | "vendor_witness" | "buyer_witness";
+    signer_role: "client" | "buyer_witness";
     agency_name: string;
     property_label: string;
     contract_no: string;
     expires_at?: string | null;
+    // Engagement tracking — used to insert an email_messages row after
+    // Resend accepts the send, so webhook events can be matched back.
+    agency_id?: string;
+    document_id?: string;
+    signer_id?: string;
 }
 
 const corsHeaders = {
@@ -235,12 +243,42 @@ Deno.serve(async (req) => {
                 to: [p.to_email],
                 subject: subjectFor(p),
                 html: renderEmail(p),
+                tracking: { opens: true, clicks: true },
             }),
         });
 
         const resendData = await resendRes.json();
         if (!resendRes.ok) {
             return json({ error: resendData }, 500);
+        }
+
+        // Insert email_messages row for engagement tracking. We only do this
+        // when the caller supplied an agency_id, which is the new flow. Old
+        // calls (if any) without agency_id won't be tracked, but Resend will
+        // still send the email successfully.
+        if (p.agency_id) {
+            try {
+                const supabase = createClient(
+                    Deno.env.get("SUPABASE_URL")!,
+                    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+                    { auth: { persistSession: false } },
+                );
+                await supabase.from("email_messages").insert({
+                    agency_id: p.agency_id,
+                    to_email: p.to_email,
+                    to_name: p.to_name ?? null,
+                    subject: subjectFor(p),
+                    email_type: "signing_request",
+                    related_entity_type: "document",
+                    related_entity_id: p.document_id ?? null,
+                    provider_message_id: resendData.id,
+                    status: "sent",
+                    sent_at: new Date().toISOString(),
+                });
+            } catch (e) {
+                // Don't fail the send if logging fails — log and continue.
+                console.error("Failed to log email_messages row:", e);
+            }
         }
 
         return json({ id: resendData.id, sent_to: p.to_email });
