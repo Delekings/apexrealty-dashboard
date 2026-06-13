@@ -76,7 +76,6 @@ Deno.serve(async (req) => {
             signature: svixSignature,
             body: bodyText,
         });
-
         if (!ok) {
             return json({ error: "Invalid signature" }, 401);
         }
@@ -237,11 +236,22 @@ async function verifySvixSignature(args: {
 }): Promise<boolean> {
     try {
         // Resend's secret is prefixed with "whsec_" — strip it and base64-decode
+        // Resend's secret is prefixed with "whsec_" — strip it and base64-decode
         const secretRaw = args.secret.startsWith("whsec_")
             ? args.secret.slice("whsec_".length)
             : args.secret;
 
-        const secretBytes = Uint8Array.from(atob(secretRaw), (c) => c.charCodeAt(0));
+        // Convert from base64url to standard base64 if needed, then pad
+        const standardised = secretRaw
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+        const padding = standardised.length % 4 === 0
+            ? ""
+            : "=".repeat(4 - (standardised.length % 4));
+        const secretBytes = Uint8Array.from(
+            atob(standardised + padding),
+            (c) => c.charCodeAt(0),
+        );
         const signedPayload = `${args.id}.${args.timestamp}.${args.body}`;
 
         const key = await crypto.subtle.importKey(
