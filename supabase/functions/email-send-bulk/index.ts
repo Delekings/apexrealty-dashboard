@@ -6,6 +6,75 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
+
+const PUBLIC_APP_URL =
+    Deno.env.get("PUBLIC_APP_URL") ?? "https://app.getlintel.org";
+const UNSUBSCRIBE_SECRET = Deno.env.get("UNSUBSCRIBE_SECRET") ?? "";
+
+async function _unsubHmacHex(secret: string, message: string): Promise<string> {
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
+    const sig = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        new TextEncoder().encode(message),
+    );
+    return Array.from(new Uint8Array(sig))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+}
+
+function _unsubEscape(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+async function _unsubHeaderSpread(
+    agencyId: string,
+    email: string,
+): Promise<Record<string, unknown>> {
+    if (!UNSUBSCRIBE_SECRET || !email) return {};
+    const base = Deno.env.get("SUPABASE_URL") ?? "";
+    if (!base) return {};
+    const sig = await _unsubHmacHex(
+        UNSUBSCRIBE_SECRET,
+        `${agencyId}:${email.toLowerCase()}`,
+    );
+    const e = encodeURIComponent(btoa(email));
+    const url =
+        `${base}/functions/v1/email-unsubscribe?a=${agencyId}&e=${e}&s=${sig}`;
+    return {
+        headers: {
+            "List-Unsubscribe": `<${url}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+    };
+}
+
+async function unsubFooter(
+    agencyId: string,
+    email: string,
+    senderName: string,
+): Promise<string> {
+    if (!UNSUBSCRIBE_SECRET || !email) return "";
+    const sig = await _unsubHmacHex(
+        UNSUBSCRIBE_SECRET,
+        `${agencyId}:${email.toLowerCase()}`,
+    );
+    const e = encodeURIComponent(btoa(email));
+    const url =
+        `${PUBLIC_APP_URL}/#/unsubscribe?a=${agencyId}&e=${e}&s=${sig}`;
+    const who = _unsubEscape(senderName || "this sender");
+    return `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#6b7280;">You received this email from ${who}. <a href="${url}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from these emails.</div>`;
+}
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 
 const corsHeaders = {
@@ -166,10 +235,17 @@ Deno.serve(async (req) => {
         for (const msg of insertedMessages) {
             // Personalise body with client's name
             const clientName = msg.to_name ?? "";
-            const personalisedHtml = body.html.replaceAll("{{name}}", clientName);
-            const personalisedSubject =
-                body.subject.replaceAll("{{name}}", clientName);
-
+            const nameParts = clientName.trim().split(/\s+/);
+            const firstName = nameParts[0] ?? "";
+            const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+            const personalisedHtml = body.html
+                .replaceAll("{{name}}", clientName)
+                .replaceAll("{{first_name}}", firstName)
+                .replaceAll("{{last_name}}", lastName);
+            const personalisedSubject = body.subject
+                .replaceAll("{{name}}", clientName)
+                .replaceAll("{{first_name}}", firstName)
+                .replaceAll("{{last_name}}", lastName);
             try {
                 const resendRes = await fetch(RESEND_API_URL, {
                     method: "POST",
@@ -181,7 +257,8 @@ Deno.serve(async (req) => {
                         from: fromHeader,
                         to: [msg.to_email],
                         subject: personalisedSubject,
-                        html: personalisedHtml,
+                        html: personalisedHtml + (await unsubFooter(agencyId, msg.to_email, fromName)),
+                        ...(await _unsubHeaderSpread(agencyId, msg.to_email)),
                         reply_to: replyTo,
                         tracking: { opens: true, clicks: true },
                     }),

@@ -52,8 +52,13 @@ class _SendEmailDialogState extends ConsumerState<SendEmailDialog> {
 
     try {
       final clientName = widget.detail.client.fullName;
-      final personalisedBody = body.replaceAll('{{name}}', clientName);
-
+      final nameParts = clientName.trim().split(RegExp(r'\s+'));
+      final firstName = nameParts.first;
+      final lastName = nameParts.length > 1 ? nameParts.last : '';
+      final personalisedBody = body
+          .replaceAll('{{name}}', clientName)
+          .replaceAll('{{first_name}}', firstName)
+          .replaceAll('{{last_name}}', lastName);
       // Wrap plain-text in basic HTML so line breaks render
       final html = '''
         <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
@@ -176,7 +181,7 @@ class _SendEmailDialogState extends ConsumerState<SendEmailDialog> {
                 // Body
                 _label('Message *',
                     helper:
-                    'Use {{name}} to insert the client\'s name automatically.'),
+                    'Personalise with {{name}}, {{first_name}}, or {{last_name}}.'),
                 TextField(
                   controller: _bodyCtrl,
                   enabled: !_sending && hasEmail,

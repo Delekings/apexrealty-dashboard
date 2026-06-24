@@ -12,6 +12,7 @@ import '../../../../data/models/models.dart';
 import '../../../../data/repositories/contract_templates_repository.dart';
 import '../../../../data/services/supabase_service.dart';
 import '../../../documents/services/sale_agreement_pdf.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 final _templateRepoProvider =
 Provider((_) => ContractTemplatesRepository());
@@ -83,7 +84,7 @@ class _ContractTemplateScreenState
           Expanded(
             flex: _showVariablesPanel ? 7 : 10,
             child: tplAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: LintelLoader()),
               error: (e, _) => Center(
                 child: Text('Failed to load template: $e',
                     style: const TextStyle(color: AppColors.danger)),
@@ -589,7 +590,7 @@ class _ContractTemplateScreenState
           Expanded(
             child: varsAsync.when(
               loading: () =>
-              const Center(child: CircularProgressIndicator()),
+              const Center(child: LintelLoader()),
               error: (e, _) => Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text('Failed: $e',
@@ -1175,7 +1176,7 @@ class _BoilerplateConfigCardState
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppColors.border, width: 0.5),
         ),
-        child: const Center(child: CircularProgressIndicator()),
+        child: const Center(child: LintelLoader()),
       );
     }
 

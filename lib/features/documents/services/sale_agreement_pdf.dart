@@ -19,6 +19,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../../data/models/models.dart';
 import '../../../data/repositories/contract_templates_repository.dart';
 import '../../../data/services/contract_template_renderer.dart';
+import 'pdf_fonts.dart';
 
 
 class SaleAgreementInput {
@@ -154,7 +155,9 @@ class SaleAgreementPdf {
     final clauses = loaded.clauses;
     final customAppendix = loaded.customAppendix;
     final ctx = loaded.ctx;
+    final theme = await PdfFonts.theme();
     final doc = pw.Document(
+      theme: theme,
       title: 'Contract of Sale of Land — ${i.contractNo}',
       author: i.agencyName,
     );
@@ -220,8 +223,10 @@ class SaleAgreementPdf {
     final clauses = loaded.clauses;
     final customAppendix = loaded.customAppendix;
     final ctx = loaded.ctx;
+    final theme = await PdfFonts.theme();
 
     final doc = pw.Document(
+      theme: theme,
       title: 'Contract of Sale of Land (signed) — ${input.contractNo}',
       author: input.agencyName,
     );
@@ -607,7 +612,7 @@ class SaleAgreementPdf {
               children: [
                 _tableCell('Payment No.', isHeader: true),
                 _tableCell('Due Date', isHeader: true),
-                _tableCell('Amount Due (NGN)', isHeader: true),
+                _tableCell('Amount Due (₦)', isHeader: true),
               ],
             ),
             for (final inst in installments)
@@ -628,7 +633,7 @@ class SaleAgreementPdf {
                 _tableCell('TOTAL', isHeader: true),
                 _tableCell(''),
                 _tableCell(
-                    'NGN ${_money.format(installments.fold<num>(0, (s, x) => s + x.amount))}',
+                    '₦${_money.format(installments.fold<num>(0, (s, x) => s + x.amount))}',
                     isHeader: true),
               ],
             ),
@@ -639,10 +644,10 @@ class SaleAgreementPdf {
   }
 
   static String _statusAmount(Installment inst) {
-    final base = 'NGN ${_money.format(inst.amount)}';
+    final base = '₦${_money.format(inst.amount)}';
     if (inst.status == InstallmentStatus.paid) return '$base — PAID';
     if (inst.status == InstallmentStatus.partial) {
-      return '$base — PART PAID (NGN ${_money.format(inst.amountPaid)})';
+      return '$base — PART PAID (₦${_money.format(inst.amountPaid)})';
     }
     return base;
   }

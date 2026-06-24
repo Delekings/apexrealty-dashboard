@@ -82,12 +82,6 @@ class ContractTemplateRenderer {
     }
 
     final startDate = parseDate(c['start_date']);
-    final firstInstDate = ctx.installments.isNotEmpty
-        ? ctx.installments.first.dueDate
-        : startDate;
-    final finalInstDate = ctx.installments.isNotEmpty
-        ? ctx.installments.last.dueDate
-        : startDate;
 
     // Total + deposit + per-installment math
     final total = (c['total_price_ngn'] as num?) ?? 0;
@@ -95,22 +89,26 @@ class ContractTemplateRenderer {
     final balance = total - deposit;
     final hasDeposit = deposit > 0;
 
-    // The "first true installment amount" — skip the deposit row if present
-    // Number of installments + per-installment amount.
-    // We DON'T skip the first row — your installment generator
-    // already accounts for the deposit by reducing each installment.
-    num installmentAmount = 0;
-    int installmentCount = ctx.installments.length;
-    if (ctx.installments.isNotEmpty) {
-      installmentAmount = ctx.installments.first.amount;
-    }
+    // The schedule stores the initial deposit as the first installment row
+    // (sequence 1) whenever a deposit exists. For the recurring-installment
+    // tokens (count / amount / dates) we drop that leading deposit row.
+    final recurring = (hasDeposit && ctx.installments.length > 1)
+        ? ctx.installments.sublist(1)
+        : ctx.installments;
+
+    final int installmentCount = recurring.length;
+    final num installmentAmount =
+        recurring.isNotEmpty ? recurring.first.amount : 0;
+
+    final firstInstDate =
+        recurring.isNotEmpty ? recurring.first.dueDate : startDate;
+    final finalInstDate =
+        recurring.isNotEmpty ? recurring.last.dueDate : startDate;
 
     return {
       // --- Vendor ---
       'vendor_name': (a['name'] as String?)?.toUpperCase(),
-      'vendor_rc': a['rc_number'] != null
-          ? 'RC ${a['rc_number']}'
-          : null,
+      'vendor_rc': _formatRc(a['rc_number'] as String?),
       'vendor_legal_form':
       'limited liability company registered under the Companies and Allied Matters Act, 2020',
       'vendor_registered_address':
@@ -236,7 +234,7 @@ class ContractTemplateRenderer {
 
   static String _naira(num amount) {
     final f = NumberFormat('#,##0', 'en_US');
-    return 'NGN ${f.format(amount)}';
+    return '₦${f.format(amount)}';
   }
 
   static String _genderDesignation(String? gender, String nationality) {
@@ -261,6 +259,10 @@ class ContractTemplateRenderer {
       Map<String, dynamic> p,
       Map<String, dynamic> ut,
       ) {
+    // Prefer an explicit, agency-authored legal description when present.
+    final stored = (p['full_legal_description'] as String?)?.trim();
+    if (stored != null && stored.isNotEmpty) return stored;
+
     final size = ut['size_sqm']?.toString() ?? p['size_sqm']?.toString() ?? '';
     final survey = (p['survey_plan_no'] as String?) ?? '[Survey Plan]';
     final loc = (p['location'] as String?)?.toUpperCase() ?? '';
@@ -268,6 +270,18 @@ class ContractTemplateRenderer {
     return 'ONE PLOT OF LAND MEASURING APPROXIMATELY $size SQUARE METERS '
         'FORMING PART OF THE PARCEL DESCRIBED IN THE SURVEY PLAN NO: $survey '
         'LOCATED AT $loc, $state.';
+  }
+
+  /// Formats a company registration number as "RC <number>", tolerating a
+  /// stored value that already includes an "RC"/"rc" prefix (with or without a
+  /// space) so the contract never reads "RC RC123456".
+  static String? _formatRc(String? raw) {
+    if (raw == null) return null;
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    final number = s.replaceFirst(RegExp(r'^[Rr][Cc]\s*'), '').trim();
+    if (number.isEmpty) return null;
+    return 'RC $number';
   }
 
   static String _unitSizeDescription(Map<String, dynamic> ut) {

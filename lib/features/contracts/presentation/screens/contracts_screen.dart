@@ -9,6 +9,7 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/contracts_repository.dart';
 import '../../providers/contracts_providers.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class ContractsScreen extends ConsumerStatefulWidget {
   const ContractsScreen({super.key});
@@ -53,21 +54,27 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
 
           // Filter
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Filter:',
-                  style:
-                  TextStyle(fontSize: 12, color: AppColors.muted)),
+              const Padding(
+                padding: EdgeInsets.only(top: 7),
+                child: Text('Filter:',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              ),
               const SizedBox(width: 12),
-              Wrap(
-                spacing: 6,
-                children: [
-                  _filterChip(null, 'All'),
-                  _filterChip(ContractStatus.active, 'Active'),
-                  _filterChip(ContractStatus.completed, 'Completed'),
-                  _filterChip(ContractStatus.pendingSignature, 'Pending sig.'),
-                  _filterChip(ContractStatus.defaulted, 'Defaulted'),
-                  _filterChip(ContractStatus.cancelled, 'Cancelled'),
-                ],
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _filterChip(null, 'All'),
+                    _filterChip(ContractStatus.active, 'Active'),
+                    _filterChip(ContractStatus.completed, 'Completed'),
+                    _filterChip(ContractStatus.pendingSignature, 'Pending sig.'),
+                    _filterChip(ContractStatus.defaulted, 'Defaulted'),
+                    _filterChip(ContractStatus.cancelled, 'Cancelled'),
+                  ],
+                ),
               ),
             ],
           ),
@@ -76,7 +83,7 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
           Expanded(
             child: async.when(
               loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.brand),
+                child: LintelLoader(),
               ),
               error: (e, _) => Center(
                 child: Text('Failed to load: $e',

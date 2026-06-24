@@ -23,6 +23,7 @@ import '../../../../data/repositories/rental_listings_repository.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../widgets/add_guest_modal.dart';
 import '../../widgets/availability_calendar.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class NewBookingScreen extends ConsumerStatefulWidget {
   const NewBookingScreen({super.key});
@@ -226,7 +227,7 @@ class _NewBookingScreenState extends ConsumerState<NewBookingScreen> {
     if (_initialLoading) {
       return const Scaffold(
         body: Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
       );
     }
 

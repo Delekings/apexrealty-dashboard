@@ -7,6 +7,7 @@ import '../../../../data/repositories/email_repository.dart';
 import '../widgets/new_campaign_dialog.dart';
 import 'email_campaign_detail_screen.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
@@ -79,6 +80,12 @@ class _EmailCampaignsScreenState extends ConsumerState<EmailCampaignsScreen> {
             onPressed: _runningScheduler ? null : _runScheduler,
           ),
           const SizedBox(width: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.group_outlined, size: 16),
+            label: const Text('Audiences'),
+            onPressed: () => context.go('/email/audiences'),
+          ),
+          const SizedBox(width: 8),
           FilledButton.icon(
             icon: const Icon(Icons.add, size: 16),
             label: const Text('New campaign'),
@@ -94,7 +101,7 @@ class _EmailCampaignsScreenState extends ConsumerState<EmailCampaignsScreen> {
         ],
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: LintelLoader()),
         error: (e, _) => Center(
             child: Text('Failed: $e',
                 style: const TextStyle(color: AppColors.danger))),

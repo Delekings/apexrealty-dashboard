@@ -11,6 +11,7 @@ import '../../../../data/repositories/clients_repository.dart';
 import '../../../dashboard/presentation/widgets/activity_timeline.dart';
 import '../widgets/send_email_dialog.dart';
 import '../../providers/clients_providers.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class ClientDetailScreen extends ConsumerWidget {
   final String clientId;
@@ -24,7 +25,7 @@ class ClientDetailScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       child: async.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
         error: (e, _) => Center(
           child: Text('Couldn\'t load client: $e',
               style: const TextStyle(color: AppColors.danger)),

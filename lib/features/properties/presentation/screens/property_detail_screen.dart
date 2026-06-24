@@ -12,6 +12,7 @@ import '../../../auth/providers/auth_providers.dart';
 import '../../providers/properties_providers.dart';
 import '../widgets/unit_inventory_card.dart';
 import '../../../shortlet/widgets/property_shortlet_card.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 
 class PropertyDetailScreen extends ConsumerStatefulWidget {
@@ -60,7 +61,7 @@ class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
       padding: const EdgeInsets.all(20),
       child: async.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
         error: (e, _) => Center(
           child: Text("Couldn't load property: $e",
               style: const TextStyle(color: AppColors.danger)),
@@ -119,6 +120,13 @@ class _Body extends StatelessWidget {
                 ],
               ),
             ),
+            OutlinedButton.icon(
+              onPressed: () =>
+                  context.go('/properties/${property.id}/edit'),
+              icon: const Icon(Icons.edit_outlined, size: 16),
+              label: const Text('Edit'),
+            ),
+            const SizedBox(width: 8),
             OutlinedButton.icon(
               onPressed: onAddPhotos,
               icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
@@ -212,7 +220,7 @@ class _Gallery extends StatelessWidget {
             color: AppColors.bg2,
             child: const Center(
               child:
-              CircularProgressIndicator(color: AppColors.brand),
+              LintelLoader(),
             ),
           ),
           errorWidget: (_, __, ___) => Container(

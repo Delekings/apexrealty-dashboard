@@ -15,7 +15,8 @@ const corsHeaders = {
 };
 
 interface SendRequest {
-    clientId: string;       // recipient client UUID
+    clientId?: string;      // recipient client UUID (omit for a test send)
+    testEmail?: string;     // raw address for a preview/test send
     subject: string;
     html: string;
     campaignName?: string;  // optional internal name for the campaign row
@@ -57,6 +58,53 @@ Deno.serve(async (req) => {
 
         // 3. Parse body
         const body: SendRequest = await req.json();
+
+        // 3a. Test send — deliver the draft straight to a raw address. No client
+        //     row, no campaign/message logging, no unsubscribe check. Used by the
+        //     composer's "Send test" button so people can preview in their inbox.
+        if (typeof body.testEmail === "string" && body.testEmail.trim()) {
+            if (!body.subject || !body.html) {
+                return json({ error: "Missing subject/html" }, 400);
+            }
+            const { data: cfgT } = await supabase
+                .from("email_provider_config")
+                .select("from_name, reply_to_email")
+                .eq("agency_id", agencyId)
+                .maybeSingle();
+            const { data: agencyT } = await supabase
+                .from("agencies")
+                .select("name, email")
+                .eq("id", agencyId)
+                .single();
+            const fromNameT = cfgT?.from_name ?? agencyT?.name ?? "Lintel";
+            const replyToT = cfgT?.reply_to_email ?? agencyT?.email ?? undefined;
+            const fromEmailT =
+                Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+
+            const testRes = await fetch(RESEND_API_URL, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${RESEND_API_KEY}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    from: `${fromNameT} <${fromEmailT}>`,
+                    to: [body.testEmail.trim()],
+                    subject: `[TEST] ${body.subject}`,
+                    html: body.html,
+                    reply_to: replyToT,
+                }),
+            });
+            const testData = await testRes.json();
+            if (!testRes.ok) {
+                return json(
+                    { error: "Resend rejected the test email", details: testData },
+                    500,
+                );
+            }
+            return json({ ok: true, test: true, providerMessageId: testData.id });
+        }
+
         if (!body.clientId || !body.subject || !body.html) {
             return json({ error: "Missing clientId/subject/html" }, 400);
         }

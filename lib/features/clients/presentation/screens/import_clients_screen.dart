@@ -92,7 +92,7 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
       _parseError = null;
       _headers = headers;
       _rawRows = rows;
-      _mapping = autoDetectColumns(headers);
+      _mapping = autoDetectColumns(headers, rows);
       _rows = mapRows(rows, _mapping);
       _results = null;
     });
@@ -313,6 +313,8 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        _columnMapper(),
         if (unmappedRequired) ...[
           const SizedBox(height: 8),
           Container(
@@ -356,7 +358,7 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
               columns: const [
                 DataColumn(label: Text('#')),
                 DataColumn(label: Text('Full name *')),
-                DataColumn(label: Text('Phone *')),
+                DataColumn(label: Text('Phone')),
                 DataColumn(label: Text('Email')),
                 DataColumn(label: Text('State')),
                 DataColumn(label: Text('Address')),
@@ -395,6 +397,112 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
         ),
       ],
     );
+  }
+
+  Widget _columnMapper() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.bg2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.swap_horiz, size: 15, color: AppColors.brand),
+              SizedBox(width: 6),
+              Text('Match your columns',
+                  style:
+                      TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'We guessed these from your file. If a column is wrong, pick the '
+            'right one — the preview updates instantly.',
+            style: TextStyle(fontSize: 11.5, color: AppColors.muted),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _mapField('Full name', 'fullName'),
+              _mapField('First name', 'firstName'),
+              _mapField('Last name', 'lastName'),
+              _mapField('Phone', 'phone'),
+              _mapField('Email', 'email'),
+              _mapField('State', 'state'),
+              _mapField('Address', 'address'),
+              _mapField('Date of birth', 'dateOfBirth'),
+              _mapField('Occupation', 'occupation'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mapField(String label, String key) {
+    return SizedBox(
+      width: 180,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          DropdownButtonFormField<int?>(
+            value: _mapping[key],
+            isExpanded: true,
+            isDense: true,
+            style: const TextStyle(fontSize: 12, color: AppColors.text),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: OutlineInputBorder(),
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            ),
+            items: [
+              const DropdownMenuItem<int?>(
+                value: null,
+                child: Text('— Not mapped —',
+                    style: TextStyle(fontSize: 12, color: AppColors.muted)),
+              ),
+              for (int i = 0; i < _headers.length; i++)
+                DropdownMenuItem<int?>(
+                  value: i,
+                  child: Text(
+                    _headers[i].trim().isEmpty
+                        ? 'Column ${i + 1}'
+                        : _headers[i].trim(),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+            onChanged: (v) => _setMapping(key, v),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _setMapping(String field, int? idx) {
+    setState(() {
+      if (idx == null) {
+        _mapping.remove(field);
+      } else {
+        _mapping[field] = idx;
+      }
+      _rows = mapRows(_rawRows, _mapping);
+    });
   }
 
   DataRow _buildRow(int idx) {

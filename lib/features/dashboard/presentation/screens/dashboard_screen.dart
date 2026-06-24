@@ -6,10 +6,13 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/responsive/breakpoints.dart';
+import '../../../../core/responsive/layout_helpers.dart';
 import '../../providers/dashboard_providers.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/activity_timeline.dart';
 import '../../../../data/models/models.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -22,20 +25,21 @@ class DashboardScreen extends ConsumerWidget {
       onRefresh: () async => ref.refresh(dashboardProvider.future),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        child: async.when(
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(40),
-              child: CircularProgressIndicator(color: AppColors.brand),
+        child: AdaptiveContainer(
+          child: async.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: LintelLoader(),
+              ),
             ),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.all(40),
+              child: Text('Failed to load: $e',
+                  style: const TextStyle(color: AppColors.danger)),
+            ),
+            data: (d) => _DashboardBody(data: d),
           ),
-          error: (e, _) => Padding(
-            padding: const EdgeInsets.all(40),
-            child: Text('Failed to load: $e',
-                style: const TextStyle(color: AppColors.danger)),
-          ),
-          data: (d) => _DashboardBody(data: d),
         ),
       ),
     );
@@ -48,8 +52,6 @@ class _DashboardBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width >= 900;
-    final crossAxisCount = isWide ? 4 : 2;
     final s = data.stats;
 
     return Column(
@@ -78,13 +80,12 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: 20),
 
         // Stat cards
-        GridView.count(
-          crossAxisCount: crossAxisCount,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: isWide ? 2.2 : 1.9,
+        ResponsiveGrid(
+          spacing: 12,
+          runSpacing: 12,
+          mobileColumns: 2,
+          tabletColumns: 2,
+          desktopColumns: 4,
           children: [
             StatCard(
               label: 'Total Clients',
@@ -119,7 +120,7 @@ class _DashboardBody extends StatelessWidget {
         const SizedBox(height: 16),
 
         // Two-column row: revenue chart + activity timeline
-        if (isWide)
+        if (context.isDesktop)
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,

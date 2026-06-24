@@ -11,6 +11,7 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../data/models/models.dart';
 import '../../providers/clients_providers.dart';
 import '../../../../data/repositories/clients_repository.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class ClientsScreen extends ConsumerStatefulWidget {
   const ClientsScreen({super.key});
@@ -120,7 +121,7 @@ class _ClientsScreenState extends ConsumerState<ClientsScreen> {
           Expanded(
             child: pageAsync.when(
               loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.brand),
+                child: LintelLoader(),
               ),
               error: (e, _) => Center(
                 child: Text('Failed to load clients: $e',

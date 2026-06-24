@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/cookie_consent_banner.dart';
 import 'data/services/supabase_service.dart';
 
 Future<void> main() async {
@@ -24,6 +25,15 @@ class LintelApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       routerConfig: router,
+      builder: (context, child) => Stack(
+        children: [
+          child ?? const SizedBox.shrink(),
+          const Align(
+            alignment: Alignment.bottomCenter,
+            child: CookieConsentBanner(),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/staff_repository.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../widgets/invite_staff_dialog.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class StaffScreen extends ConsumerWidget {
   const StaffScreen({super.key});
@@ -54,7 +55,7 @@ class StaffScreen extends ConsumerWidget {
           Expanded(
             child: staffAsync.when(
               loading: () =>
-              const Center(child: CircularProgressIndicator()),
+              const Center(child: LintelLoader()),
               error: (e, _) => Center(
                 child: Text('Failed to load staff: $e',
                     style: const TextStyle(color: AppColors.danger)),

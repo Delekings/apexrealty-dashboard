@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_repository.dart';
 import '../widgets/automation_editor_dialog.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
@@ -92,7 +93,7 @@ class _EmailAutomationsScreenState
         ],
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: LintelLoader()),
         error: (e, _) => Center(
             child: Text('Failed: $e',
                 style: const TextStyle(color: AppColors.danger))),

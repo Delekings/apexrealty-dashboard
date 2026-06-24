@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_repository.dart';
+import '../../../../data/services/supabase_service.dart';
+import '../../../../data/repositories/email_audiences_repository.dart';
+import '../../providers/email_audiences_providers.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
@@ -12,7 +15,14 @@ final _clientStatesProvider = FutureProvider.autoDispose((ref) async {
 });
 
 class NewCampaignDialog extends ConsumerStatefulWidget {
-  const NewCampaignDialog({super.key});
+  const NewCampaignDialog({
+    super.key,
+    this.initialHtml,
+    this.initialHtmlMode = false,
+  });
+
+  final String? initialHtml;
+  final bool initialHtmlMode;
 
   @override
   ConsumerState<NewCampaignDialog> createState() =>
@@ -33,6 +43,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
   DateTime? _scheduledFor;
 
   bool _sending = false;
+  bool _htmlMode = false;
   String? _error;
 
   ({String campaignId, int totalRecipients, int sentCount, int failedCount})?
@@ -41,6 +52,10 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialHtml != null) {
+      _bodyCtrl.text = widget.initialHtml!;
+      _htmlMode = widget.initialHtmlMode;
+    }
     _refreshCount();
   }
 
@@ -50,6 +65,19 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
     _subjectCtrl.dispose();
     _bodyCtrl.dispose();
     super.dispose();
+  }
+
+  void _applyAudience(EmailAudience a) {
+    setState(() {
+      final t = (a.filter['type'] as String?) ?? 'all';
+      _filterType = t;
+      _selectedStates.clear();
+      if (t == 'by_state') {
+        _selectedStates.addAll(
+            (a.filter['states'] as List?)?.cast<String>() ?? const []);
+      }
+    });
+    _refreshCount();
   }
 
   Map<String, dynamic> _buildFilter() {
@@ -164,11 +192,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
     });
 
     try {
-      final html = '''
-        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
-          ${body.replaceAll('\n', '<br>')}
-        </div>
-      ''';
+      final html = _renderHtml(body);
 
       final result = await ref.read(_emailRepoProvider).sendBulk(
         campaignName: name,
@@ -210,11 +234,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
     });
 
     try {
-      final html = '''
-        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
-          ${body.replaceAll('\n', '<br>')}
-        </div>
-      ''';
+      final html = _renderHtml(body);
 
       final result = await ref.read(_emailRepoProvider).scheduleCampaign(
         campaignName: name,
@@ -233,6 +253,94 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
     } catch (e) {
       setState(() =>
       _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// Renders the editor body to send-ready HTML. In HTML mode the body is the
+  /// raw HTML the user authored; in Simple mode we wrap their text in a basic
+  /// shell and turn newlines into <br>.
+  String _renderHtml(String body) {
+    if (_htmlMode) return body;
+    return '''
+        <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
+          ${body.replaceAll('\n', '<br>')}
+        </div>
+      ''';
+  }
+
+  Future<void> _sendTest() async {
+    final subject = _subjectCtrl.text.trim();
+    final body = _bodyCtrl.text.trim();
+    if (subject.isEmpty || body.isEmpty) {
+      setState(() => _error = 'Add a subject and message before sending a test');
+      return;
+    }
+
+    var toEmail = SupabaseService.client.auth.currentUser?.email ?? '';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send a test'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "We'll send this draft to one address so you can preview it. "
+              "It won't create a campaign or affect your stats.",
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: toEmail,
+              keyboardType: TextInputType.emailAddress,
+              autofocus: true,
+              onChanged: (v) => toEmail = v,
+              decoration: const InputDecoration(
+                labelText: 'Send test to',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Send test'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    toEmail = toEmail.trim();
+    if (toEmail.isEmpty) return;
+
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      await ref.read(_emailRepoProvider).sendTestEmail(
+            toEmail: toEmail,
+            subject: subject,
+            html: _renderHtml(body),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Test sent to $toEmail'),
+          backgroundColor: AppColors.brand,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      setState(
+          () => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -329,16 +437,57 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
                     const SizedBox(height: 14),
 
                     _label('Message *',
-                        helper: 'Use {{name}} for personalisation.'),
+                        helper:
+                        'Personalise with {{first_name}}, {{last_name}} or {{name}}.'),
+                    Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Simple',
+                              style: TextStyle(fontSize: 12)),
+                          selected: !_htmlMode,
+                          onSelected: (_) =>
+                              setState(() => _htmlMode = false),
+                          selectedColor: AppColors.brandLight,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        const SizedBox(width: 6),
+                        ChoiceChip(
+                          label: const Text('HTML',
+                              style: TextStyle(fontSize: 12)),
+                          selected: _htmlMode,
+                          onSelected: (_) =>
+                              setState(() => _htmlMode = true),
+                          selectedColor: AppColors.brandLight,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
                     TextField(
                       controller: _bodyCtrl,
-                      maxLines: 8,
+                      maxLines: _htmlMode ? 16 : 8,
                       minLines: 5,
-                      decoration: const InputDecoration(
-                        hintText: 'Hi {{name}},\n\n...',
+                      style: _htmlMode
+                          ? const TextStyle(
+                              fontFamily: 'monospace', fontSize: 13)
+                          : null,
+                      decoration: InputDecoration(
+                        hintText: _htmlMode
+                            ? '<h1>Hello {{first_name}}</h1>\n<p>Your message…</p>'
+                            : 'Hi {{name}},\n\n...',
                         isDense: true,
                       ),
                     ),
+                    if (_htmlMode) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Write or paste full HTML. Placeholders like '
+                        '{{first_name}} still work. Use "Send test" to preview '
+                        'it in your inbox.',
+                        style:
+                            TextStyle(fontSize: 11, color: AppColors.muted),
+                      ),
+                    ],
 
                     if (_error != null) ...[
                       const SizedBox(height: 12),
@@ -380,6 +529,12 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
                         label: Text(_scheduledFor == null
                             ? 'Schedule…'
                             : _formatScheduled()),
+                      ),
+                      const SizedBox(width: 6),
+                      OutlinedButton.icon(
+                        onPressed: _sending ? null : _sendTest,
+                        icon: const Icon(Icons.forward_to_inbox, size: 14),
+                        label: const Text('Send test'),
                       ),
                       const Spacer(),
                       TextButton(
@@ -455,6 +610,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
 
   Widget _recipientPicker() {
     final statesAsync = ref.watch(_clientStatesProvider);
+    final audiencesAsync = ref.watch(emailAudiencesProvider);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -469,6 +625,37 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
               style:
               TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
+          audiencesAsync.maybeWhen(
+            data: (auds) => auds.isEmpty
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: DropdownButtonFormField<String>(
+                      value: null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: 'Load a saved audience',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final a in auds)
+                          DropdownMenuItem(
+                            value: a.id,
+                            child: Text(a.name,
+                                style: const TextStyle(fontSize: 12),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                      onChanged: (id) {
+                        if (id == null) return;
+                        _applyAudience(
+                            auds.firstWhere((x) => x.id == id));
+                      },
+                    ),
+                  ),
+            orElse: () => const SizedBox.shrink(),
+          ),
           _radioOption('all', 'All clients with an email'),
           _radioOption(
               'has_active_contract', 'Clients with an active contract'),

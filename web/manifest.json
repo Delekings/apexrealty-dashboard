@@ -1,11 +1,11 @@
 {
-    "name": "lintel",
-    "short_name": "lintel",
+    "name": "Lintel",
+    "short_name": "Lintel",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F4F37",
+    "theme_color": "#0F4F37",
+    "description": "Real estate CRM for Nigerian agencies.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

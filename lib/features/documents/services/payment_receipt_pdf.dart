@@ -7,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'sale_agreement_pdf.dart' show DirectorSignature;
+import 'pdf_fonts.dart';
 
 class PaymentReceiptInput {
   // Agency
@@ -88,7 +89,9 @@ class PaymentReceiptPdf {
   static final _dateFmt = DateFormat('d MMMM yyyy');
 
   static Future<Uint8List> build(PaymentReceiptInput i) async {
+    final theme = await PdfFonts.theme();
     final doc = pw.Document(
+      theme: theme,
       title: 'Receipt ${i.receiptNo}',
       author: i.agencyName,
     );
@@ -193,7 +196,7 @@ class PaymentReceiptPdf {
                           color: PdfColor.fromHex('#1A5C38'))),
                   pw.SizedBox(height: 6),
                   pw.Text(
-                    'NGN ${_nairaFormat.format(i.amountNgn)}',
+                    '₦${_nairaFormat.format(i.amountNgn)}',
                     style: pw.TextStyle(
                         fontSize: 24,
                         fontWeight: pw.FontWeight.bold,
@@ -360,7 +363,7 @@ class PaymentReceiptPdf {
                 fontWeight: pw.FontWeight.bold,
                 color: PdfColors.grey700)),
         pw.Text(
-          'NGN ${_nairaFormat.format(amount)}',
+          '₦${_nairaFormat.format(amount)}',
           style: pw.TextStyle(
               fontSize: 11,
               fontWeight: emphasize ? pw.FontWeight.bold : pw.FontWeight.normal,

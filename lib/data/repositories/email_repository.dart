@@ -1,6 +1,9 @@
 // lib/data/repositories/email_repository.dart
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/storage_service.dart';
 import '../services/supabase_service.dart';
 
 // ============================================================
@@ -360,6 +363,45 @@ class EmailRepository {
     } on FunctionException catch (e) {
       throw Exception(_extractError(e.details, e.status));
     }
+  }
+
+  /// Sends the current draft to a single raw address for preview/testing.
+  /// Does NOT create a campaign or log a message, so it never affects
+  /// analytics. Subject is prefixed with [TEST] by the Edge Function.
+  Future<void> sendTestEmail({
+    required String toEmail,
+    required String subject,
+    required String html,
+  }) async {
+    try {
+      final res = await _c.functions.invoke(
+        'email-send-test',
+        body: {
+          'testEmail': toEmail,
+          'subject': subject,
+          'html': html,
+        },
+      );
+      if (res.status != 200) {
+        throw Exception(_extractError(res.data, res.status));
+      }
+    } on FunctionException catch (e) {
+      throw Exception(_extractError(e.details, e.status));
+    }
+  }
+
+  /// Uploads an image/GIF for use in an email and returns its public URL.
+  Future<String> uploadEmailImage({
+    required Uint8List bytes,
+    required String filename,
+  }) async {
+    final agencyId = await _myAgencyId();
+    if (agencyId == null) throw Exception('No agency on profile');
+    return StorageService.uploadEmailImage(
+      agencyId: agencyId,
+      bytes: bytes,
+      filename: filename,
+    );
   }
 
   /// Get all emails sent to a specific client.

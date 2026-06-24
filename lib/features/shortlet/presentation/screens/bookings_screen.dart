@@ -13,6 +13,9 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/bookings_repository.dart';
 import '../../../../data/repositories/rental_listings_repository.dart';
+import '../../../../core/responsive/breakpoints.dart';
+import '../../../../core/responsive/layout_helpers.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class BookingsScreen extends ConsumerStatefulWidget {
   const BookingsScreen({super.key});
@@ -117,33 +120,30 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen>
           const SizedBox(height: 16),
 
           // Stats strip
-          Row(
+          ResponsiveGrid(
+            spacing: 12,
+            runSpacing: 12,
+            mobileColumns: 3,
+            tabletColumns: 3,
+            desktopColumns: 3,
             children: [
-              Expanded(
-                child: _statCard(
-                  label: 'Upcoming',
-                  value: upcoming.valueOrNull?.length.toString() ?? '–',
-                  icon: Icons.event_outlined,
-                  color: AppColors.brand,
-                ),
+              _statCard(
+                label: 'Upcoming',
+                value: upcoming.valueOrNull?.length.toString() ?? '–',
+                icon: Icons.event_outlined,
+                color: AppColors.brand,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _statCard(
-                  label: 'In-house now',
-                  value: inHouse.valueOrNull?.length.toString() ?? '–',
-                  icon: Icons.king_bed_outlined,
-                  color: AppColors.info,
-                ),
+              _statCard(
+                label: 'In-house now',
+                value: inHouse.valueOrNull?.length.toString() ?? '–',
+                icon: Icons.king_bed_outlined,
+                color: AppColors.info,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _statCard(
-                  label: 'Past 30 days',
-                  value: past.valueOrNull?.length.toString() ?? '–',
-                  icon: Icons.history,
-                  color: AppColors.muted,
-                ),
+              _statCard(
+                label: 'Past 30 days',
+                value: past.valueOrNull?.length.toString() ?? '–',
+                icon: Icons.history,
+                color: AppColors.muted,
               ),
             ],
           ),
@@ -223,13 +223,17 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen>
             children: [
               Icon(icon, size: 14, color: color),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.muted,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.3),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.3),
+                ),
               ),
             ],
           ),
@@ -251,7 +255,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen>
       }) {
     return async.when(
       loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.brand)),
+          child: LintelLoader()),
       error: (e, _) => Center(
         child: Text('Could not load bookings: $e',
             style: const TextStyle(color: AppColors.danger)),
@@ -318,108 +322,130 @@ class _BookingRow extends ConsumerWidget {
     final isDepartingToday = booking.status == BookingStatus.checkedIn &&
         _isSameDay(booking.checkOutDate, today);
 
-    return InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => context.go('/bookings/${booking.id}'),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
+    final statusBox = SizedBox(
+      width: 90,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Status pill column
-          SizedBox(
-            width: 90,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _statusPill(booking.status),
-                if (isArrivingToday) ...[
-                  const SizedBox(height: 4),
-                  _smallTag('Arriving today', AppColors.brand),
-                ],
-                if (isDepartingToday) ...[
-                  const SizedBox(height: 4),
-                  _smallTag('Departing today', AppColors.warn),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Main details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      booking.bookingNo,
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${dateFmt.format(booking.checkInDate)} → ${dateFmt.format(booking.checkOutDate)} · ${booking.nights} night${booking.nights == 1 ? '' : 's'}',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.muted),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  booking.clientName,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  booking.unitTitle != null
-                      ? '${booking.propertyTitle} · ${booking.unitTitle}'
-                      : booking.propertyTitle,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.muted),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Text(
-                      Formatters.naira(booking.totalNgn),
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '· ${bookingPaymentStatusLabel(booking.paymentStatus)}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: booking.paymentStatus ==
-                              BookingPaymentStatus.paid
-                              ? AppColors.brand
-                              : AppColors.muted),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Actions
-          _rowActions(context, ref),
+          _statusPill(booking.status),
+          if (isArrivingToday) ...[
+            const SizedBox(height: 4),
+            _smallTag('Arriving today', AppColors.brand),
+          ],
+          if (isDepartingToday) ...[
+            const SizedBox(height: 4),
+            _smallTag('Departing today', AppColors.warn),
+          ],
         ],
       ),
+    );
+
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Booking ref + stay dates. Wrap so the date string flows to a
+        // second line on narrow screens instead of overflowing horizontally.
+        Wrap(
+          spacing: 8,
+          runSpacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              booking.bookingNo,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w500),
+            ),
+            Text(
+              '${dateFmt.format(booking.checkInDate)} → ${dateFmt.format(booking.checkOutDate)} · ${booking.nights} night${booking.nights == 1 ? '' : 's'}',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          booking.clientName,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          booking.unitTitle != null
+              ? '${booking.propertyTitle} · ${booking.unitTitle}'
+              : booking.propertyTitle,
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 2,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              Formatters.naira(booking.totalNgn),
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            Text(
+              '· ${bookingPaymentStatusLabel(booking.paymentStatus)}',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: booking.paymentStatus == BookingPaymentStatus.paid
+                      ? AppColors.brand
+                      : AppColors.muted),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => context.go('/bookings/${booking.id}'),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        // On phones the dense three-column row can't fit the action button,
+        // so we drop it to a full-width button beneath the details.
+        child: context.isMobile
+            ? Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                statusBox,
+                const SizedBox(width: 12),
+                Expanded(child: details),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _rowActions(context, ref, fullWidth: true),
+          ],
         )
+            : Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            statusBox,
+            const SizedBox(width: 12),
+            Expanded(child: details),
+            const SizedBox(width: 12),
+            _rowActions(context, ref),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _rowActions(BuildContext context, WidgetRef ref) {
+  Widget _rowActions(BuildContext context, WidgetRef ref,
+      {bool fullWidth = false}) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment:
+      fullWidth ? CrossAxisAlignment.stretch : CrossAxisAlignment.center,
       children: [
         if (booking.status == BookingStatus.confirmed)
           OutlinedButton.icon(

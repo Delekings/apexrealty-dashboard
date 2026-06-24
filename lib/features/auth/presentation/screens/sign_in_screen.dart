@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../providers/auth_providers.dart';
+import '../widgets/password_field.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
@@ -34,6 +35,33 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Widget _legalLine(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text('By continuing you agree to our ',
+            style: TextStyle(fontSize: 12, color: AppColors.muted)),
+        _legalLink(context, 'Terms of Service', '/legal/terms'),
+        const Text(' and ',
+            style: TextStyle(fontSize: 12, color: AppColors.muted)),
+        _legalLink(context, 'Privacy Policy', '/legal/privacy'),
+        const Text('.', style: TextStyle(fontSize: 12, color: AppColors.muted)),
+      ],
+    );
+  }
+
+  Widget _legalLink(BuildContext context, String label, String route) {
+    return GestureDetector(
+      onTap: () => context.go(route),
+      child: Text(label,
+          style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.brand,
+              fontWeight: FontWeight.w500)),
+    );
   }
 
   @override
@@ -80,11 +108,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                   decoration: const InputDecoration(labelText: 'Email'),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                PasswordField(
                   controller: _password,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  onSubmitted: (_) => _submit(),
+                  label: 'Password',
+                  onSubmitted: _submit,
                 ),
                 const SizedBox(height: 8),
                 Align(
@@ -133,6 +160,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 24),
+                _legalLine(context),
               ],
             ),
           ),

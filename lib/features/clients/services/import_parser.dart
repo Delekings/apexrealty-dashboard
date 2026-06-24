@@ -45,7 +45,7 @@ class ImportRow {
 
   static String? _validatePhone(String p) {
     final s = p.trim();
-    if (s.isEmpty) return 'Phone is required';
+    if (s.isEmpty) return null; // phone is optional
     if (s.replaceAll(RegExp(r'[\s\-\+\(\)]'), '').length < 10) {
       return 'Phone looks too short';
     }
@@ -84,16 +84,17 @@ const _columnAliases = <String, List<String>>{
   'lastName': ['last name', 'lastname', 'lname', 'surname', 'family name'],
   'phone': [
     'phone', 'phone number', 'mobile', 'mobile number', 'tel', 'telephone',
-    'whatsapp', 'cell', 'msisdn', 'number',
+    'telephone number', 'whatsapp', 'cell', 'msisdn', 'number',
   ],
   'email': ['email', 'email address', 'e-mail', 'mail'],
-  'state': ['state', 'region', 'province'],
+  'state': ['state', 'region', 'province', 'state of origin'],
   'address': ['address', 'street', 'home address', 'residential address'],
   'dateOfBirth': ['date of birth', 'dob', 'birthday', 'birthdate', 'born'],
   'occupation': ['occupation', 'job', 'profession', 'role', 'job title'],
 };
 
-Map<String, int> autoDetectColumns(List<String> headers) {
+Map<String, int> autoDetectColumns(List<String> headers,
+    [List<List<String>> sampleRows = const []]) {
   final mapping = <String, int>{};
   final lower = headers.map((h) => h.toLowerCase().trim()).toList();
 
@@ -105,7 +106,50 @@ Map<String, int> autoDetectColumns(List<String> headers) {
       }
     }
   }
+
+  // Data-aware refinement. Header names alone are unreliable on messy exports
+  // (e.g. a "Email" column that actually contains "anonymous"). When we have
+  // sample rows, prefer the column whose VALUES look like the field — but only
+  // if the header-guessed column clearly doesn't.
+  if (sampleRows.isNotEmpty) {
+    int score(int col, bool Function(String) test) {
+      var n = 0;
+      for (final r in sampleRows) {
+        if (col >= 0 && col < r.length && test(r[col])) n++;
+      }
+      return n;
+    }
+
+    void refine(String field, bool Function(String) test) {
+      final cur = mapping[field];
+      final curScore = cur == null ? 0 : score(cur, test);
+      final threshold = (sampleRows.length / 2).ceil();
+      if (curScore >= threshold) return; // current pick already looks right
+      int? best = cur;
+      var bestScore = curScore;
+      for (int i = 0; i < headers.length; i++) {
+        final sc = score(i, test);
+        if (sc > bestScore) {
+          best = i;
+          bestScore = sc;
+        }
+      }
+      if (best != null && bestScore > curScore) mapping[field] = best;
+    }
+
+    refine('email', _looksLikeEmail);
+    refine('phone', _looksLikePhone);
+  }
+
   return mapping;
+}
+
+bool _looksLikeEmail(String s) =>
+    RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s.trim());
+
+bool _looksLikePhone(String s) {
+  final d = s.trim().replaceAll(RegExp(r'[\s\-\+\(\)]'), '');
+  return d.length >= 7 && d.length <= 15 && RegExp(r'^\d+$').hasMatch(d);
 }
 
 List<ImportRow> mapRows(
@@ -141,8 +185,13 @@ List<ImportRow> mapRows(
 }
 
 String _normalizeDate(String raw) {
-  final s = raw.trim();
+  var s = raw.trim();
   if (s.isEmpty) return '';
+  // Excel date cells (and the excel package's date wrapper) serialise with a
+  // time component, e.g. '2026-07-03T00:00:00.000' or '2026-07-03 00:00:00'.
+  // Keep only the date part before validating/normalising.
+  if (s.contains('T')) s = s.split('T').first.trim();
+  if (RegExp(r'\s\d{1,2}:\d{2}').hasMatch(s)) s = s.split(RegExp(r'\s')).first.trim();
   if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(s)) return s;
   final m =
   RegExp(r'^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})$').firstMatch(s);

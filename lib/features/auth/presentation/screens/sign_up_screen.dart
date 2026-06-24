@@ -1,11 +1,14 @@
 // lib/features/auth/presentation/screens/sign_up_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 import '../../../../core/theme/app_theme.dart';
 import '../../providers/auth_providers.dart';
+import '../widgets/password_field.dart';
+import '../widgets/policy_acceptance_dialog.dart';
 
 const _nigerianStates = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue',
@@ -32,6 +35,17 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool _needsEmailConfirmation = false;
   String? _confirmationEmail;
 
+  // Set once the user has accepted the Terms of Service + Privacy Policy
+  // via the acceptance dialog. Gates the "Create account" action.
+  bool _acceptedPolicies = false;
+
+  // Email verification code (OTP) entry, shown after a successful sign-up.
+  // _otpLength MUST match the "Email OTP Length" set in Supabase Auth.
+  static const int _otpLength = 8;
+  final _otp = TextEditingController();
+  String? _otpError;
+  bool _resending = false;
+
   // Agency fields
   final _agencyName = TextEditingController();
   final _agencyPhone = TextEditingController();
@@ -55,6 +69,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     _phone.dispose();
     _password.dispose();
     _confirm.dispose();
+    _otp.dispose();
     super.dispose();
   }
 
@@ -63,14 +78,36 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
   bool get _step1Valid =>
       _agencyName.text.trim().isNotEmpty && _agencyState != null;
 
+  // Reasonable email shape check: local@domain.tld
+  static final _emailRe =
+      RegExp(r'^[\w.+-]+@[\w-]+\.[\w.-]+$');
+
   String? _validateStep2() {
     if (_fullName.text.trim().isEmpty) return 'Please enter your full name';
-    if (!_email.text.contains('@')) return 'Please enter a valid email';
+    if (!_emailRe.hasMatch(_email.text.trim())) {
+      return 'Please enter a valid email address';
+    }
+    final phoneErr = _validatePhone(_phone.text);
+    if (phoneErr != null) return phoneErr;
     if (_password.text.length < 6) {
       return 'Password must be at least 6 characters';
     }
     if (_password.text != _confirm.text) return "Passwords don't match";
+    if (!_acceptedPolicies) {
+      return 'Please review and accept the Terms of Service and Privacy Policy';
+    }
     return null;
+  }
+
+  /// Validates a Nigerian phone number. Accepts 0XXXXXXXXXX (11 digits) or
+  /// +234XXXXXXXXXX / 234XXXXXXXXXX. Returns null when valid.
+  String? _validatePhone(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[\s\-()]'), '');
+    if (digits.isEmpty) return 'Please enter your phone number';
+    final local = RegExp(r'^0[789]\d{9}$'); // 0803..., 0701..., 0901...
+    final intl = RegExp(r'^\+?234[789]\d{9}$'); // +2348..., 234701...
+    if (local.hasMatch(digits) || intl.hasMatch(digits)) return null;
+    return 'Enter a valid Nigerian phone number (e.g. 0803 123 4567)';
   }
 
   // ---------------- Submit ----------------
@@ -162,7 +199,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
     );
   }
 
-  // ---------- "Check your email" state ----------
+  // ---------- Email code entry state ----------
 
   Widget _confirmationContent() {
     return Column(
@@ -189,33 +226,154 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         const SizedBox(height: 16),
         const Center(
           child: Text(
-            'Check your email',
+            'Enter your code',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          "We sent a confirmation link to ${_confirmationEmail ?? "your email"}. "
-              "Click the link to activate your account, then sign in.",
+          "We sent a $_otpLength-digit code to ${_confirmationEmail ?? "your email"}. "
+              "Enter it below to activate your account.",
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 13, color: AppColors.muted),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _otp,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: _otpLength,
+          autofocus: true,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 8,
+          ),
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: InputDecoration(
+            counterText: '',
+            hintText: '-' * _otpLength,
+            hintStyle:
+                const TextStyle(letterSpacing: 8, color: AppColors.border),
+          ),
+          onChanged: (v) {
+            if (_otpError != null) setState(() => _otpError = null);
+            if (v.length == _otpLength) _verifyOtp();
+          },
+          onSubmitted: (_) => _verifyOtp(),
+        ),
+        if (_otpError != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            _otpError!,
+            style: const TextStyle(color: AppColors.danger, fontSize: 13),
+          ),
+        ],
+        const SizedBox(height: 16),
         FilledButton(
-          onPressed: () => context.go('/signin'),
-          child: const Text('Go to sign in'),
+          onPressed: _loading ? null : _verifyOtp,
+          child: _loading
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+              : const Text('Verify & continue'),
         ),
         const SizedBox(height: 8),
         TextButton(
+          onPressed: _resending ? null : _resendOtp,
+          child: Text(_resending ? 'Sending…' : "Didn't get it? Resend code"),
+        ),
+        TextButton(
           onPressed: () => setState(() {
             _needsEmailConfirmation = false;
+            _otp.clear();
+            _otpError = null;
           }),
-          child: const Text(
-            "Didn't receive the email? Try a different address",
-          ),
+          child: const Text('Use a different email'),
         ),
       ],
     );
+  }
+
+  // ---------- Email code (OTP) verification ----------
+
+  Future<void> _verifyOtp() async {
+    final code = _otp.text.trim();
+    if (code.length < _otpLength) {
+      setState(
+          () => _otpError = 'Enter the $_otpLength-digit code from your email');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _otpError = null;
+    });
+    try {
+      await ref.read(authRepositoryProvider).verifySignupCode(
+            email: _confirmationEmail ?? _email.text.trim(),
+            code: code,
+          );
+      // Confirmed + signed in. Make sure the agency/profile rows exist
+      // (the trigger usually creates them at sign-up), then enter the app.
+      await ref.read(authRepositoryProvider).completeSignupIfNeeded(
+            fullName: _fullName.text.trim(),
+            phone: _phone.text.trim(),
+            agencyName: _agencyName.text.trim(),
+            agencyPhone: _agencyPhone.text.trim(),
+            agencyState: _agencyState ?? '',
+            agencyRcNumber: _rcNumber.text.trim(),
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Welcome to Lintel, ${_fullName.text.trim()}!'),
+          backgroundColor: AppColors.brand,
+        ),
+      );
+      context.go('/');
+    } on AuthException catch (e) {
+      setState(() => _otpError = _readableOtpError(e));
+    } catch (e) {
+      setState(() => _otpError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _readableOtpError(AuthException e) {
+    final m = e.message.toLowerCase();
+    if (m.contains('expired')) {
+      return 'That code has expired. Tap "Resend code" for a new one.';
+    }
+    if (m.contains('invalid') || m.contains('token') || m.contains('otp')) {
+      return 'That code is incorrect. Please check it and try again.';
+    }
+    return e.message;
+  }
+
+  Future<void> _resendOtp() async {
+    setState(() {
+      _resending = true;
+      _otpError = null;
+    });
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .resendSignupCode(_confirmationEmail ?? _email.text.trim());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A new code is on its way.')),
+      );
+    } on AuthException catch (e) {
+      setState(() => _otpError = e.message);
+    } catch (e) {
+      setState(() => _otpError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
   }
 
   // ---------- Form state ----------
@@ -459,7 +617,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         keyboardType: TextInputType.emailAddress,
       ),
       _field(
-        label: 'Phone',
+        label: 'Phone *',
         controller: _phone,
         hint: '080X XXX XXXX',
         keyboardType: TextInputType.phone,
@@ -475,7 +633,75 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
         controller: _confirm,
         obscure: true,
       ),
+      _policyAcceptanceTile(),
     ];
+  }
+
+  Widget _policyAcceptanceTile() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: _loading ? null : _openPolicyDialog,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: _acceptedPolicies
+                ? AppColors.brand.withOpacity(0.06)
+                : AppColors.bg2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _acceptedPolicies ? AppColors.brand : AppColors.border,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _acceptedPolicies
+                    ? Icons.check_circle
+                    : Icons.assignment_outlined,
+                size: 20,
+                color: _acceptedPolicies ? AppColors.brand : AppColors.muted,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _acceptedPolicies
+                      ? "You've accepted the Terms of Service and Privacy Policy"
+                      : 'Read & accept the Terms of Service and Privacy Policy',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color:
+                        _acceptedPolicies ? AppColors.brand : AppColors.text,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _acceptedPolicies ? 'Review' : 'Open',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  color: AppColors.brand,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPolicyDialog() async {
+    final accepted = await showPolicyAcceptanceDialog(context);
+    if (!mounted) return;
+    if (accepted) {
+      setState(() {
+        _acceptedPolicies = true;
+        _error = null;
+      });
+    }
   }
 
   Widget _field({
@@ -499,16 +725,23 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
             ),
           ),
           const SizedBox(height: 4),
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            obscureText: obscure,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              hintText: hint,
+          if (obscure)
+            PasswordField(
+              controller: controller,
+              hint: hint,
               isDense: true,
+              onChanged: onChanged,
+            )
+          else
+            TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              onChanged: onChanged,
+              decoration: InputDecoration(
+                hintText: hint,
+                isDense: true,
+              ),
             ),
-          ),
         ],
       ),
     );

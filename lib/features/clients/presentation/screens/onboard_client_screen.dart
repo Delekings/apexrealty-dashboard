@@ -59,7 +59,8 @@ class _OnboardClientScreenState extends ConsumerState<OnboardClientScreen> {
   }
 
   bool get _step1Valid =>
-      _fullName.text.trim().isNotEmpty && _phone.text.trim().length >= 10;
+      _fullName.text.trim().isNotEmpty &&
+      (_phone.text.trim().isEmpty || _phone.text.trim().length >= 10);
 
   Future<void> _submit() async {
     setState(() {
@@ -267,7 +268,7 @@ class _Step1Basic extends ConsumerWidget {
             style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         const Text(
-          'Name and phone are required — the rest you can fill in later.',
+          'Name is required — phone and the rest you can add later.',
           style: TextStyle(fontSize: 12, color: AppColors.muted),
         ),
         const SizedBox(height: 16),
@@ -280,7 +281,7 @@ class _Step1Basic extends ConsumerWidget {
         ),
         _TwoCol(
           left: _Field(
-            label: 'Phone *',
+            label: 'Phone',
             controller: state._phone,
             hint: '080X XXX XXXX',
             keyboardType: TextInputType.phone,

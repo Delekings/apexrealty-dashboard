@@ -15,6 +15,7 @@ import '../../../../data/repositories/bookings_repository.dart';
 import '../../widgets/cancel_booking_dialog.dart';
 import '../../widgets/house_rules_dialog.dart';
 import '../../widgets/record_booking_payment_dialog.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class BookingDetailScreen extends ConsumerWidget {
   final String bookingId;
@@ -36,7 +37,7 @@ class BookingDetailScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       child: async.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
         error: (e, _) => Center(
           child: Text('Could not load booking: $e',
               style: const TextStyle(color: AppColors.danger)),

@@ -99,40 +99,40 @@ class _AutomationEditorDialogState
       switch (triggerType) {
         case 'client_birthday':
           _nameCtrl.text = 'Birthday greeting';
-          _subjectCtrl.text = 'Happy birthday, {{name}}! 🎉';
+          _subjectCtrl.text = 'Happy birthday, {{first_name}}! 🎉';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nThe whole team here wishes you a very happy birthday! '
+          'Hi {{first_name}},\n\nThe whole team here wishes you a very happy birthday! '
               'Thank you for being part of our family.\n\nWith warm wishes,';
         case 'days_before_installment_due':
           _nameCtrl.text = '3-day installment reminder';
           _subjectCtrl.text = 'Reminder: Your installment is due soon';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nThis is a friendly reminder that your next installment is '
+          'Hi {{first_name}},\n\nThis is a friendly reminder that your next installment is '
               'due in a few days. Please ensure your payment is made on time.\n\nThank you,';
         case 'days_after_installment_overdue':
           _nameCtrl.text = 'Overdue follow-up';
           _subjectCtrl.text = 'Action required: Your installment is overdue';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nWe noticed your installment is now overdue. Please make '
+          'Hi {{first_name}},\n\nWe noticed your installment is now overdue. Please make '
               'your payment as soon as possible to avoid any late charges. If you have '
               'any concerns, please reach out.\n\nWith care,';
         case 'contract_anniversary':
           _nameCtrl.text = 'Contract anniversary';
           _subjectCtrl.text = 'Celebrating your milestone with us!';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nIt\'s been another year since you signed your contract '
+          'Hi {{first_name}},\n\nIt\'s been another year since you signed your contract '
               'with us. Thank you for your continued trust!\n\nWarm regards,';
         case 'days_after_client_onboarded':
           _nameCtrl.text = 'Welcome follow-up';
-          _subjectCtrl.text = 'Welcome to our family, {{name}}';
+          _subjectCtrl.text = 'Welcome to our family, {{first_name}}';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nIt\'s been a day since you joined us. We just wanted to '
+          'Hi {{first_name}},\n\nIt\'s been a day since you joined us. We just wanted to '
               'say hi and let you know we\'re here if you need anything.\n\nBest,';
         case 'on_contract_signed':
           _nameCtrl.text = 'Contract signing confirmation';
           _subjectCtrl.text = 'Your contract is officially signed';
           _bodyCtrl.text =
-          'Hi {{name}},\n\nCongratulations! Your contract has been signed. We\'re '
+          'Hi {{first_name}},\n\nCongratulations! Your contract has been signed. We\'re '
               'thrilled to have you on this journey with us.\n\nThanks,';
       }
     });
@@ -221,7 +221,8 @@ class _AutomationEditorDialogState
                     const SizedBox(height: 14),
 
                     _label('Message *',
-                        helper: 'Use {{name}} for personalisation.'),
+                        helper:
+                        'Use {{name}} for full name or {{first_name}} for first name only.'),
                     TextField(
                       controller: _bodyCtrl,
                       maxLines: 8,

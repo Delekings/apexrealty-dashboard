@@ -6,6 +6,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_repository.dart';
 import '../widgets/email_engagement_row.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
@@ -114,7 +115,7 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
         children: [
           // ----- Settings tab (the existing content) -----
           cfgAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const Center(child: LintelLoader()),
             error: (e, _) => Center(
                 child: Text('Failed: $e',
                     style: const TextStyle(color: AppColors.danger))),

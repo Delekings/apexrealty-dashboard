@@ -15,6 +15,7 @@ import '../../../data/repositories/signing_repository.dart';
 import '../../documents/widgets/signature_pad.dart';
 import '../widgets/typed_signature.dart';
 import '../../../core/widgets/single_file_picker.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 enum SigningStep { otp, review, sign, done }
 
@@ -69,7 +70,7 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
       backgroundColor: AppColors.bg2,
       body: async.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
         error: (e, _) => _errorState(e.toString()),
         data: (ctx) {
           if (ctx == null) return _expiredState();

@@ -10,6 +10,8 @@ import '../../../../data/repositories/agency_branding_repository.dart';
 import '../../../../data/repositories/signatures_repository.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../../documents/widgets/signature_pad.dart';
+import '../../../../core/responsive/responsive.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class SignaturesSettingsScreen extends ConsumerWidget {
   const SignaturesSettingsScreen({super.key});
@@ -30,66 +32,78 @@ class SignaturesSettingsScreen extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ===== Branding section =====
-          _BrandingSection(agencyId: agencyId),
-          const SizedBox(height: 24),
-          // ===== Signatures section header =====
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Signatures',
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ===== Branding section =====
+            _BrandingSection(agencyId: agencyId),
+            const SizedBox(height: 24),
+            // ===== Signatures section header =====
+            Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Signatures',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.w600)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Signatures used on sale agreements and receipts.',
                         style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w600)),
-                    SizedBox(height: 2),
-                    Text(
-                      'Signatures used on sale agreements and receipts.',
-                      style: TextStyle(
-                          color: AppColors.muted, fontSize: 13),
-                    ),
-                  ],
+                            color: AppColors.muted, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              FilledButton.icon(
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (_) =>
-                      _AddSignatureDialog(agencyId: agencyId),
+                FilledButton.icon(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) =>
+                        _AddSignatureDialog(agencyId: agencyId),
+                  ),
+                  icon: const Icon(Icons.add, size: 14),
+                  label: const Text('Add signature'),
                 ),
-                icon: const Icon(Icons.add, size: 14),
-                label: const Text('Add signature'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            async.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                    child: CircularProgressIndicator(
+                        color: AppColors.brand)),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: async.when(
-              loading: () => const Center(
-                  child: CircularProgressIndicator(
-                      color: AppColors.brand)),
-              error: (e, _) => Center(
-                child: Text('Failed: $e',
-                    style: const TextStyle(color: AppColors.danger)),
+              error: (e, _) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text('Failed: $e',
+                      style: const TextStyle(color: AppColors.danger)),
+                ),
               ),
               data: (sigs) {
                 if (sigs.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.draw_outlined,
-                    title: 'No signatures yet',
-                    message:
-                    'Add one to start sending contracts for signature.',
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: EmptyState(
+                      icon: Icons.draw_outlined,
+                      title: 'No signatures yet',
+                      message:
+                      'Add one to start sending contracts for signature.',
+                    ),
                   );
                 }
                 return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   gridDelegate:
-                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                  SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: 360,
-                    childAspectRatio: 1.7,
+                    childAspectRatio: context.responsive(
+                        mobile: 1.4, tablet: 1.55, desktop: 1.7),
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 12,
                   ),
@@ -101,8 +115,8 @@ class SignaturesSettingsScreen extends ConsumerWidget {
                 );
               },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -166,6 +180,8 @@ class _SignatureCard extends ConsumerWidget {
             const SizedBox(height: 2),
             Text(
               '${signature.signerName}${signature.signerTitle != null ? ' · ${signature.signerTitle}' : ''}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   fontSize: 11, color: AppColors.muted),
             ),
@@ -537,7 +553,7 @@ class _BrandingSection extends ConsumerWidget {
       loading: () => const SizedBox(
         height: 80,
         child: Center(
-          child: CircularProgressIndicator(color: AppColors.brand),
+          child: LintelLoader(),
         ),
       ),
       error: (e, _) => Text('Failed to load branding: $e',
@@ -778,10 +794,6 @@ class _SealUploaderState extends ConsumerState<_SealUploader> {
       _error = null;
     });
     try {
-      // Use the existing FilePicker through SingleFilePicker pattern would be
-      // more involved here since SingleFilePicker has a different shape.
-      // For simplicity we use FilePicker directly.
-      // ignore: import_of_legacy_library_into_null_safe
       final res = await _pickImage();
       if (res == null) {
         setState(() => _busy = false);

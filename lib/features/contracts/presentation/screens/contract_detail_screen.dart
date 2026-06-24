@@ -15,6 +15,7 @@ import '../../../documents/widgets/send_for_signature_dialog.dart';
 import '../../providers/contracts_providers.dart';
 import '../widgets/record_payment_dialog.dart';
 import '../widgets/signature_progress_card.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class ContractDetailScreen extends ConsumerWidget {
   final String contractId;
@@ -28,7 +29,7 @@ class ContractDetailScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       child: async.when(
         loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.brand)),
+            child: LintelLoader()),
         error: (e, _) => Center(
           child: Text('Could not load contract: $e',
               style: const TextStyle(color: AppColors.danger)),
@@ -303,6 +304,22 @@ class _InstallmentScheduleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasDeposit = detail.contract.initialDeposit > 0;
+    final installments = detail.installments;
+
+    // The schedule stores the initial deposit as the sequence-1 row whenever a
+    // deposit exists. Show it as a distinct "Initial deposit" line and number
+    // only the recurring balance payments, so this matches the contract wording.
+    final depositMatches = hasDeposit
+        ? installments.where((i) => i.sequence == 1).toList()
+        : const <Installment>[];
+    final depositRow = depositMatches.isNotEmpty ? depositMatches.first : null;
+    final recurring = hasDeposit
+        ? installments.where((i) => i.sequence != 1).toList()
+        : installments.toList();
+    final paidCount =
+        recurring.where((i) => i.status == InstallmentStatus.paid).length;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -316,18 +333,24 @@ class _InstallmentScheduleCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w600)),
                 Text(
-                  '${detail.installments.where((i) => i.status == InstallmentStatus.paid).length} / ${detail.installments.length} paid',
+                  '$paidCount / ${recurring.length} paid',
                   style: const TextStyle(
                       fontSize: 11, color: AppColors.muted),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            for (final inst in detail.installments)
+            if (depositRow != null)
               _InstallmentRow(
-                installment: inst,
+                installment: depositRow,
                 contractId: contractId,
-                total: detail.installments.length,
+                label: 'Initial deposit',
+              ),
+            for (var i = 0; i < recurring.length; i++)
+              _InstallmentRow(
+                installment: recurring[i],
+                contractId: contractId,
+                label: 'Installment ${i + 1} of ${recurring.length}',
               ),
           ],
         ),
@@ -339,18 +362,17 @@ class _InstallmentScheduleCard extends StatelessWidget {
 class _InstallmentRow extends StatelessWidget {
   final Installment installment;
   final String contractId;
-  final int total;
+  final String label;
   const _InstallmentRow({
     required this.installment,
     required this.contractId,
-    required this.total,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
     final canPay = installment.status != InstallmentStatus.paid &&
         installment.status != InstallmentStatus.waived;
-    final label = 'Installment ${installment.sequence} of $total';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

@@ -34,6 +34,29 @@ class StorageService {
     return SupabaseService.client.storage.from(_bucket).getPublicUrl(path);
   }
 
+  /// Upload an image/GIF for use in an email, into the public bucket under
+  /// the agency's `email-assets/` prefix. Returns a public URL suitable for
+  /// an email <img src> (email clients fetch it without auth).
+  static Future<String> uploadEmailImage({
+    required String agencyId,
+    required Uint8List bytes,
+    required String filename,
+  }) async {
+    final ext = _ext(filename);
+    final path = '$agencyId/email-assets/${_uuid.v4()}.$ext';
+
+    await SupabaseService.client.storage.from(_bucket).uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: _mimeFor(ext),
+        upsert: false,
+      ),
+    );
+
+    return SupabaseService.client.storage.from(_bucket).getPublicUrl(path);
+  }
+
   /// Delete a photo by its full storage path (not the public URL).
   static Future<void> deletePhoto(String storagePath) async {
     await SupabaseService.client.storage.from(_bucket).remove([storagePath]);
@@ -58,6 +81,7 @@ class StorageService {
     switch (ext) {
       case 'png': return 'image/png';
       case 'webp': return 'image/webp';
+      case 'gif': return 'image/gif';
       default: return 'image/jpeg';
     }
   }

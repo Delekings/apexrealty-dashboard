@@ -99,6 +99,29 @@ class AuthRepository {
     return SignUpResult(needsEmailConfirmation: true, email: email);
   }
 
+  /// Verifies the 6-digit email confirmation code sent after sign-up.
+  /// On success the account is confirmed AND a session is created (the
+  /// user is signed in) — no email link or redirect needed. This is the
+  /// flow used by the registration screen, and works well on mobile.
+  Future<void> verifySignupCode({
+    required String email,
+    required String code,
+  }) async {
+    await _c.auth.verifyOTP(
+      email: email.trim(),
+      token: code.trim(),
+      type: OtpType.signup,
+    );
+  }
+
+  /// Re-sends the sign-up confirmation code to [email].
+  Future<void> resendSignupCode(String email) async {
+    await _c.auth.resend(
+      type: OtpType.signup,
+      email: email.trim(),
+    );
+  }
+
   /// Sends a password reset email. The link in the email will redirect
   /// the user to /reset-password where they set a new password.
   Future<void> requestPasswordReset(String email) async {

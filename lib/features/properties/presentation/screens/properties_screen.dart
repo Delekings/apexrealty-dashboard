@@ -12,6 +12,7 @@ import '../../../../core/widgets/empty_state.dart';
 import '../../../../data/models/models.dart';
 import '../../../../data/repositories/properties_repository.dart';
 import '../../providers/properties_providers.dart';
+import 'package:lintel/core/widgets/lintel_loader.dart';
 
 class PropertiesScreen extends ConsumerStatefulWidget {
   const PropertiesScreen({super.key});
@@ -140,7 +141,7 @@ class _PropertiesScreenState extends ConsumerState<PropertiesScreen> {
           Expanded(
             child: pageAsync.when(
               loading: () => const Center(
-                child: CircularProgressIndicator(color: AppColors.brand),
+                child: LintelLoader(),
               ),
               error: (e, _) => Center(
                 child: Text('Failed to load: $e',
