@@ -1,5 +1,5 @@
 # Codemagic CI/CD — Lintel (Techforge Developers Limited)
-# The app_store_connect integration name (ASC_API_KEY) must match the
+# The app_store_connect integration name (Codemagic API Key) must match the
 # App Store Connect API key name set in the Codemagic UI.
 workflows:
 
@@ -23,10 +23,8 @@ workflows:
       - build/**/outputs/bundle/**/*.aab
       - build/**/mapping.txt
     publishing:
-      # First release: comment this out, download the .aab artifact, and upload
-      # manually to the Play Console (Google requires the first build by hand).
       google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS   # Codemagic UI > Environment variables
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
         track: internal
         submit_as_draft: true
 
@@ -35,19 +33,25 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: ASC_API_KEY   # <-- Codemagic UI integration name for the ASC API key
+      app_store_connect: Codemagic API Key   # <-- Codemagic UI integration name
     environment:
       flutter: 3.22.0
       xcode: latest               # Xcode 26.x — meets Apple's iOS 26 SDK requirement
       cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: dev.thetechforge.lintel
       vars:
         APP_STORE_APPLE_ID: 6784547677
+        BUNDLE_ID: "dev.thetechforge.lintel"
     scripts:
       - name: Flutter packages
         script: flutter pub get
+      - name: Set up code signing (creates cert + profile if missing)
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
       - name: Build IPA
