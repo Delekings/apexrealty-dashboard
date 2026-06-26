@@ -21,30 +21,34 @@ workflows:
       - name: Flutter packages
         script: flutter pub get
       - name: Set up code signing
-        script: |
-          xcode-project use-profiles
+        script: xcode-project use-profiles
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
+      - name: Create export options
+        script: |
+          cat > /tmp/export.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>2SY29F99Q9</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>uploadBitcode</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
       - name: Build IPA
         script: |
-          flutter build ipa --release
-      - name: Upload to App Store Connect (TestFlight)
+          flutter build ipa --release --export-options-plist=/tmp/export.plist
+          echo "=== IPA result ==="
+          find build/ios/ipa -name "*.ipa" || echo "NO IPA"
+      - name: Upload to App Store Connect
         script: |
-          echo "=== Searching for IPA anywhere in the tree ==="
-          find . -name "*.ipa" 2>/dev/null || echo "no ipa found anywhere"
-          IPA=$(find . -name "*.ipa" 2>/dev/null | head -1)
-          if [ -z "$IPA" ]; then
-            echo "ERROR: No .ipa was produced by the build."
-            echo "=== Contents of build/ios ==="
-            ls -R build/ios 2>/dev/null || echo "build/ios does not exist"
-            exit 1
-          fi
-          echo "Found IPA at: $IPA"
+          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
+          echo "Uploading $IPA"
           app-store-connect publish --path "$IPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
