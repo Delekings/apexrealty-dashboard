@@ -44,23 +44,19 @@ workflows:
     scripts:
       - name: Flutter packages
         script: flutter pub get
-      - name: Set up code signing (create dev + distribution cert/profile)
+      - name: Sign and build IPA
         script: |
           keychain initialize
-          # Development cert + profile — Xcode validates this during the archive build
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_DEVELOPMENT \
-            --create
-          # App Store distribution cert + profile — for the release archive & export
+          # Create the App Store distribution cert + provisioning profile if missing.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
+          # Stamp the profile onto every build config (Debug/Profile/Release)...
           xcode-project use-profiles
-      - name: Pod install
-        script: find . -name "Podfile" -execdir pod install \;
-      - name: Build IPA
-        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+          # ...then build immediately in the SAME step so manual signing can't reset.
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
