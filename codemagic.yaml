@@ -33,19 +33,30 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: Codemagic API Key   # <-- Codemagic UI integration name
+      app_store_connect: Codemagic API Key   # <-- Codemagic UI integration name (provides ASC API creds)
     environment:
       flutter: 3.22.0
       xcode: latest               # Xcode 26.x — meets Apple's iOS 26 SDK requirement
       cocoapods: default
-      ios_signing:                # Codemagic-managed automatic signing (creates cert + profile)
-        distribution_type: app_store
-        bundle_identifier: dev.thetechforge.lintel
       vars:
         APP_STORE_APPLE_ID: 6784547677
+        BUNDLE_ID: "dev.thetechforge.lintel"
     scripts:
       - name: Flutter packages
         script: flutter pub get
+      - name: Set up code signing (create dev + distribution cert/profile)
+        script: |
+          keychain initialize
+          # Development cert + profile — Xcode validates this during the archive build
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_DEVELOPMENT \
+            --create
+          # App Store distribution cert + profile — for the release archive & export
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
       - name: Build IPA
