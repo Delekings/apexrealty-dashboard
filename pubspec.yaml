@@ -35,9 +35,10 @@ dependencies:
   # Charts
   fl_chart: 0.67.0
 
-  # PDF generation (receipts) — kept at versions that resolve on Flutter 3.19.6
-  pdf: 3.10.8
-  printing: 5.12.0
+  # PDF generation (receipts) — printing 5.11.1 pulls a pdf_widget_wrapper
+  # that compiles cleanly on Flutter 3.19.6 (no ViewConfiguration issues).
+  pdf: 3.10.7
+  printing: 5.11.1
 
   csv: ^6.0.0
   excel: ^4.0.6
@@ -60,12 +61,6 @@ dependencies:
 
   cupertino_icons: 1.0.6
   web: ^0.5.1
-
-# Forces a pdf_widget_wrapper that compiles against newer Flutter's
-# ViewConfiguration (fixes "No named parameter with the name 'size'") while
-# still resolving on the local Flutter 3.19.6 SDK.
-dependency_overrides:
-  pdf_widget_wrapper: ^1.0.2
 
 dev_dependencies:
   flutter_test:
