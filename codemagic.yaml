@@ -44,14 +44,10 @@ workflows:
     scripts:
       - name: Flutter packages
         script: flutter pub get
-      - name: Set up code signing (create dev + distribution cert/profile)
+      - name: Set up code signing
         script: |
           keychain initialize
-          # Development cert + profile — Xcode validates this during the archive build
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_DEVELOPMENT \
-            --create
-          # App Store distribution cert + profile — for the release archive & export
+          # App Store distribution cert + profile — drives the release archive & export
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --create
@@ -60,7 +56,7 @@ workflows:
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
       - name: Build IPA
-        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
+        script: flutter build ipa --release
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
