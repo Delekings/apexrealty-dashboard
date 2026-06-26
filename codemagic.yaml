@@ -1,0 +1,38 @@
+# Codemagic CI/CD — Lintel (Techforge Developers Limited)
+workflows:
+
+  ios-release:
+    name: Lintel iOS Release
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: Codemagic API Key
+    environment:
+      flutter: 3.19.6
+      xcode: latest
+      cocoapods: default
+      vars:
+        APP_STORE_APPLE_ID: 6784547677
+        BUNDLE_ID: "dev.thetechforge.lintel"
+    scripts:
+      - name: Flutter packages
+        script: flutter pub get
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Pod install
+        script: find . -name "Podfile" -execdir pod install \;
+      - name: Build IPA
+        script: flutter build ipa --release
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
