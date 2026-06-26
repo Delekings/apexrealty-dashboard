@@ -65,7 +65,7 @@ dependencies:
 # ViewConfiguration (fixes "No named parameter with the name 'size'") while
 # still resolving on the local Flutter 3.19.6 SDK.
 dependency_overrides:
-  pdf_widget_wrapper: ^1.0.4
+  pdf_widget_wrapper: ^1.0.2
 
 dev_dependencies:
   flutter_test:
