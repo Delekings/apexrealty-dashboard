@@ -1,6 +1,5 @@
 # Codemagic CI/CD — Lintel (Techforge Developers Limited)
-# Produces a signed .ipa as a downloadable artifact.
-# Upload to App Store Connect is done manually via the Transporter app.
+# Produces a signed .ipa as a downloadable artifact for Transporter upload.
 workflows:
 
   ios-release:
@@ -23,7 +22,13 @@ workflows:
       - name: Flutter packages
         script: flutter pub get
       - name: Set up code signing
-        script: xcode-project use-profiles
+        script: |
+          xcode-project use-profiles
+          echo "=== Installed provisioning profiles ==="
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo -n "Profile name: "
+            security cms -D -i "$f" 2>/dev/null | plutil -extract Name raw - 2>/dev/null || echo "(could not read)"
+          done
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
       - name: Create export options
@@ -36,6 +41,11 @@ workflows:
             <key>method</key><string>app-store</string>
             <key>teamID</key><string>2SY29F99Q9</string>
             <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>dev.thetechforge.lintel</key>
+              <string>Lintel App Store</string>
+            </dict>
             <key>uploadBitcode</key><false/>
             <key>uploadSymbols</key><true/>
           </dict>
