@@ -30,11 +30,17 @@ workflows:
           flutter build ipa --release
       - name: Upload to App Store Connect (TestFlight)
         script: |
-          APP_STORE_CONNECT_PRIVATE_KEY=$(echo "$APP_STORE_CONNECT_PRIVATE_KEY")
-          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
-          echo "Uploading $IPA"
-          app-store-connect publish \
-            --path "$IPA"
+          echo "=== Searching for IPA anywhere in the tree ==="
+          find . -name "*.ipa" 2>/dev/null || echo "no ipa found anywhere"
+          IPA=$(find . -name "*.ipa" 2>/dev/null | head -1)
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No .ipa was produced by the build."
+            echo "=== Contents of build/ios ==="
+            ls -R build/ios 2>/dev/null || echo "build/ios does not exist"
+            exit 1
+          fi
+          echo "Found IPA at: $IPA"
+          app-store-connect publish --path "$IPA"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
