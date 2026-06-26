@@ -44,6 +44,12 @@ workflows:
     scripts:
       - name: Flutter packages
         script: flutter pub get
+
+      - name: Register bundle ID (no-op if it already exists)
+        script: |
+          app-store-connect bundle-ids register "$BUNDLE_ID" \
+            --name "Lintel" || true
+
       - name: Set up code signing
         script: |
           keychain initialize
@@ -52,13 +58,23 @@ workflows:
             --type IOS_APP_STORE \
             --create
           keychain add-certificates
+          # Write the fetched profiles into the project AND force manual signing
           xcode-project use-profiles
+
       - name: Pod install
         script: find . -name "Podfile" -execdir pod install \;
+
       - name: Build IPA
-        script: flutter build ipa --release
+        script: |
+          # Build without signing, then archive/sign manually with the fetched profile.
+          # This avoids Flutter's archive falling back to automatic signing.
+          flutter build ios --release --no-codesign
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner
     artifacts:
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:
         auth: integration
