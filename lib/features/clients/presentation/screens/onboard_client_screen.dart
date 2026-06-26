@@ -516,6 +516,7 @@ class _DropdownField<T> extends StatelessWidget {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           DropdownButtonFormField<T>(
+            isExpanded: true,
             value: value,
             isDense: true,
             decoration: const InputDecoration(isDense: true),

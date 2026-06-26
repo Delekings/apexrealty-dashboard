@@ -397,6 +397,7 @@ class _RentalListingDialogState extends ConsumerState<RentalListingDialog> {
         if (_isPerUnit) ...[
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             value: _unitTypeId,
             isDense: true,
             decoration: const InputDecoration(

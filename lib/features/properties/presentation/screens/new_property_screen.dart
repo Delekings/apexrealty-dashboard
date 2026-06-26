@@ -200,6 +200,7 @@ class _NewPropertyScreenState extends ConsumerState<NewPropertyScreen> {
                               children: [
                                 _label('State *'),
                                 DropdownButtonFormField<String>(
+                                  isExpanded: true,
                                   value: _state,
                                   isDense: true,
                                   decoration: const InputDecoration(

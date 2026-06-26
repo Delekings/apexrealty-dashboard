@@ -5,7 +5,7 @@ Effective date: 14 June 2026
 
 Version 1.0
 
-Provider: The Tech Forge Ltd  ·  RC 8371716
+Provider: Techforge Developers Limited  ·  RC 8371716
 
 **What this policy does.** This Policy explains what happens when you close your Lintel account, when end clients of an agency request deletion of their data, and how Lintel honours data protection rights under the NDPA, GDPR, and other applicable laws. It also explains the limited cases in which we cannot delete data — and why.
 
@@ -55,7 +55,7 @@ Provider: The Tech Forge Ltd  ·  RC 8371716
 
 ## **1.1 Purpose**
 
-This Account Deletion Policy (the "Policy") explains how The Tech Forge Ltd ("Lintel," "we," "us," or "our") handles requests to close accounts and to delete personal data from the Lintel platform. The Policy sets out:
+This Account Deletion Policy (the "Policy") explains how Techforge Developers Limited ("Lintel," "we," "us," or "our") handles requests to close accounts and to delete personal data from the Lintel platform. The Policy sets out:
 
 * Who can request deletion and what they can request;
 
@@ -266,7 +266,7 @@ Customers can close their Lintel account through any of the following channels:
 
 * By email: send a closure request to billing@getlintel.org from the email address associated with the account, identifying the account and confirming the closure;
 
-* By post: written request to The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos.
+* By post: written request to Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos.
 
 We may require additional verification (Section 14\) to confirm your authority to close the account, especially where it is a multi-user account or where the request comes from an email address other than the registered primary email.
 
@@ -925,12 +925,12 @@ For all matters relating to account closure or data deletion, please contact:
 | **End Client requests (where Customer unresponsive)** | privacy@getlintel.org |
 | **Disputes about deletion or retention** | dpo@getlintel.org |
 | **General product support** | hello@getlintel.org |
-| **Postal address** | The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Postal address** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 
 We aim to acknowledge enquiries within 5 working days. Urgent deletion requests under data protection law are typically completed within 30 days from the date of valid request.
 
 *End of Account Deletion Policy*
 
-Lintel · Version 1.0 · Effective 14 June 2026 · The Tech Forge Ltd · RC 8371716
+Lintel · Version 1.0 · Effective 14 June 2026 · Techforge Developers Limited · RC 8371716
 
 *This Policy is provided as a template. We strongly recommend independent legal review before adopting it.*

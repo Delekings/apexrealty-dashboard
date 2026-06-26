@@ -193,6 +193,7 @@ class _EditPropertyScreenState extends ConsumerState<EditPropertyScreen> {
                                 children: [
                                   _label('State *'),
                                   DropdownButtonFormField<String>(
+                                    isExpanded: true,
                                     value: _state,
                                     isDense: true,
                                     decoration:

@@ -609,6 +609,7 @@ class _NewBookingScreenState extends ConsumerState<NewBookingScreen> {
                           fontSize: 11, color: AppColors.muted)),
                   const SizedBox(height: 4),
                   DropdownButtonFormField<BookingSource>(
+                    isExpanded: true,
                     value: _source,
                     isDense: true,
                     decoration: const InputDecoration(isDense: true),

@@ -303,6 +303,7 @@ class _SendForSignatureDialogState
             _selectedSignature ??=
                 sigs.firstWhere((s) => s.isDefault, orElse: () => sigs.first);
             return DropdownButtonFormField<String>(
+              isExpanded: true,
               isDense: true,
               value: _selectedSignature?.id,
               decoration: const InputDecoration(isDense: true),

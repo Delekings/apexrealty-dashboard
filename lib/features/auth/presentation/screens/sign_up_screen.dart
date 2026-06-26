@@ -762,6 +762,7 @@ class _SignUpScreenState extends ConsumerState<SignUpScreen> {
           ),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
+            isExpanded: true,
             value: _agencyState,
             isDense: true,
             decoration: const InputDecoration(isDense: true),

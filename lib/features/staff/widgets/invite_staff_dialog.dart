@@ -121,6 +121,7 @@ class _InviteStaffDialogState extends ConsumerState<InviteStaffDialog> {
           _label('Role *'),
           DropdownButtonFormField<String>(
             value: _role,
+            isExpanded: true,
             isDense: true,
             decoration: const InputDecoration(isDense: true),
             items: const [

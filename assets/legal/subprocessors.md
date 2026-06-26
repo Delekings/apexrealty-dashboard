@@ -7,7 +7,7 @@ Effective date: 14 June 2026
 
 Version 1.0
 
-Provider: The Tech Forge Ltd  ·  RC 8371716
+Provider: Techforge Developers Limited  ·  RC 8371716
 
 **What this disclosure does.** This Disclosure lists the third parties ("Sub-processors") that Lintel engages to help provide the Service, where each is located, what data they handle, why we use them, and what safeguards apply. It supports our Data Processing Addendum and is required by the NDPA and GDPR.
 
@@ -53,7 +53,7 @@ Provider: The Tech Forge Ltd  ·  RC 8371716
 
 ## **1.1 Purpose**
 
-This Subprocessor Disclosure (the "Disclosure") lists the Sub-processors that The Tech Forge Ltd ("Lintel," "we," "us," or "our") engages to help us provide the Lintel platform (the "Service"). For each Sub-processor, the Disclosure identifies:
+This Subprocessor Disclosure (the "Disclosure") lists the Sub-processors that Techforge Developers Limited ("Lintel," "we," "us," or "our") engages to help us provide the Lintel platform (the "Service"). For each Sub-processor, the Disclosure identifies:
 
 * Their name and corporate identity;
 
@@ -293,11 +293,11 @@ Note: Google Analytics is loaded only after Customer consent through our cookie 
 
 ## **8.1 Lintel affiliates**
 
-Where Lintel has affiliated companies (such as branches, subsidiaries, or related entities of The Tech Forge Ltd), they may process Customer Data on the same basis as Lintel itself. As of the effective date:
+Where Lintel has affiliated companies (such as branches, subsidiaries, or related entities of Techforge Developers Limited), they may process Customer Data on the same basis as Lintel itself. As of the effective date:
 
-* The Tech Forge Ltd has no separately incorporated affiliates processing Customer Data;
+* Techforge Developers Limited has no separately incorporated affiliates processing Customer Data;
 
-* All Lintel processing operations are conducted directly by The Tech Forge Ltd.
+* All Lintel processing operations are conducted directly by Techforge Developers Limited.
 
 If we engage affiliates in the future, this section will be updated and Customers notified in accordance with Section 12\.
 
@@ -686,12 +686,12 @@ For questions about Sub-processors or this Disclosure:
 | **Audit requests** | dpo@getlintel.org |
 | **Legal questions about this Disclosure** | legal@getlintel.org |
 | **General product support** | hello@getlintel.org |
-| **Postal address** | The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Postal address** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 
 We aim to acknowledge enquiries within 5 working days. Urgent matters concerning Sub-processor incidents should be marked urgent in the subject line.
 
 *End of Subprocessor Disclosure*
 
-Lintel · Version 1.0 · Effective 14 June 2026 · The Tech Forge Ltd · RC 8371716
+Lintel · Version 1.0 · Effective 14 June 2026 · Techforge Developers Limited · RC 8371716
 
 *The current Sub-processor list is always available at getlintel.org/legal/subprocessors. The online version prevails over any printed or saved copy.*

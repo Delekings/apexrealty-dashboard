@@ -185,6 +185,7 @@ class _AgentDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String?>(
+      isExpanded: true,
       value: selectedId,
       isDense: true,
       decoration: const InputDecoration(

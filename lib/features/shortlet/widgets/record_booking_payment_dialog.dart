@@ -116,6 +116,7 @@ class _RecordBookingPaymentDialogState
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<PaymentChannel>(
+                isExpanded: true,
                 value: _channel,
                 isDense: true,
                 decoration: const InputDecoration(

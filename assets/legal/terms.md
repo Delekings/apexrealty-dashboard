@@ -5,11 +5,11 @@ Effective date: 14 June 2026
 
 Version 2.0
 
-Provider: The Tech Forge Ltd  ·  RC 8371716
+Provider: Techforge Developers Limited  ·  RC 8371716
 
 27 Carter Street, Ebute Metta, Lagos, Nigeria
 
-**Important.** These Terms form a binding legal agreement between you (the customer) and The Tech Forge Ltd. Please read them carefully, particularly the sections on liability limits, indemnities, dispute resolution, and electronic signatures. If you do not agree, you must not access or use the Service.
+**Important.** These Terms form a binding legal agreement between you (the customer) and Techforge Developers Limited. Please read them carefully, particularly the sections on liability limits, indemnities, dispute resolution, and electronic signatures. If you do not agree, you must not access or use the Service.
 
 # **Table of contents**
 
@@ -65,7 +65,7 @@ Provider: The Tech Forge Ltd  ·  RC 8371716
 
 ## **1.1 Parties**
 
-These Terms of Service (the "Terms") are entered into between you, either personally or on behalf of an entity ("you," "your," or the "Customer"), and The Tech Forge Ltd, a private company limited by shares duly registered in the Federal Republic of Nigeria with registration number 8371716 and registered office at 27 Carter Street, Ebute Metta, Lagos, Nigeria ("Lintel," "we," "us," or "our").
+These Terms of Service (the "Terms") are entered into between you, either personally or on behalf of an entity ("you," "your," or the "Customer"), and Techforge Developers Limited, a private company limited by shares duly registered in the Federal Republic of Nigeria with registration number 8371716 and registered office at 27 Carter Street, Ebute Metta, Lagos, Nigeria ("Lintel," "we," "us," or "our").
 
 ## **1.2 Acceptance**
 
@@ -101,7 +101,7 @@ These Terms, together with the following documents, form the complete agreement 
 
 Where there is any conflict between these documents, the order of precedence in Section 23.11 applies.
 
-**Plain English summary.** This section establishes that these Terms are a contract between you and The Tech Forge Ltd. By using Lintel, you agree to them. If you are signing up on behalf of your agency, you confirm you have authority to do so on the agency's behalf.
+**Plain English summary.** This section establishes that these Terms are a contract between you and Techforge Developers Limited. By using Lintel, you agree to them. If you are signing up on behalf of your agency, you confirm you have authority to do so on the agency's behalf.
 
 # **2\. Definitions and interpretation**
 
@@ -842,7 +842,7 @@ If you provide us with any feedback, suggestions, ideas, improvements, comments,
 
 ## **12.5 Trademarks**
 
-"Lintel" and the Lintel logo are trademarks of The Tech Forge Ltd. All other trademarks, service marks, and trade names displayed on or through the Service are the property of their respective owners. Nothing in these Terms grants you a licence to use any trademark.
+"Lintel" and the Lintel logo are trademarks of Techforge Developers Limited. All other trademarks, service marks, and trade names displayed on or through the Service are the property of their respective owners. Nothing in these Terms grants you a licence to use any trademark.
 
 ## **12.6 Your trademarks**
 
@@ -1150,7 +1150,7 @@ You acknowledge that the disclaimers in Section 17 and the limitations of liabil
 
 ## **19.1 Indemnification by you**
 
-You will defend, indemnify, and hold harmless The Tech Forge Ltd, its Affiliates, and their respective directors, officers, employees, agents, and contractors (each, an "Indemnified Party") from and against any and all claims, demands, suits, proceedings, damages, losses, liabilities, judgments, settlements, costs, and expenses (including reasonable legal fees) arising out of or relating to:
+You will defend, indemnify, and hold harmless Techforge Developers Limited, its Affiliates, and their respective directors, officers, employees, agents, and contractors (each, an "Indemnified Party") from and against any and all claims, demands, suits, proceedings, damages, losses, liabilities, judgments, settlements, costs, and expenses (including reasonable legal fees) arising out of or relating to:
 
 * Your, or your Authorized Users', use of the Service;
 
@@ -1452,13 +1452,13 @@ If you have questions, concerns, or wish to give notice under these Terms, pleas
 | **Data Protection Officer (DPO)** | dpo@getlintel.org |
 | **Security incidents and disclosures** | security@getlintel.org |
 | **General product support** | hello@getlintel.org |
-| **Registered office (postal)** | The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Registered office (postal)** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 | **Company registration** | RC 8371716, registered in the Federal Republic of Nigeria |
 
 We aim to acknowledge enquiries within 5 working days. For urgent matters, mark your communication as urgent in the subject line.
 
 *End of Terms of Service*
 
-Lintel · Version 2.0 · Effective 14 June 2026 · The Tech Forge Ltd · RC 8371716
+Lintel · Version 2.0 · Effective 14 June 2026 · Techforge Developers Limited · RC 8371716
 
 *These Terms are provided as a template. We strongly recommend independent legal review before adopting them, particularly for your specific regulatory environment, customer base, and operational model.*

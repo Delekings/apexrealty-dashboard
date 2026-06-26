@@ -100,6 +100,7 @@ class _PropertiesScreenState extends ConsumerState<PropertiesScreen> {
               Expanded(
                 flex: 2,
                 child: DropdownButtonFormField<PropertyStatus?>(
+                  isExpanded: true,
                   value: filter.status,
                   isDense: true,
                   decoration: const InputDecoration(

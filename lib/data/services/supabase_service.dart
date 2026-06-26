@@ -1,8 +1,12 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:web/web.dart' as web;
 
 import '../../core/constants/env.dart';
+// Conditional import: the stub (no-op) is used everywhere by default; on web
+// (where dart.library.html exists) the real package:web implementation is
+// selected instead. This keeps package:web / dart:js_interop out of the
+// Android & iOS compile entirely.
+import 'session_recovery_stub.dart'
+    if (dart.library.html) 'session_recovery_web.dart';
 
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -16,28 +20,8 @@ class SupabaseService {
       ),
     );
 
-    if (kIsWeb) {
-      try {
-        final stash = web.window.sessionStorage.getItem('sb-pending-auth-query');
-        if (stash != null && stash.isNotEmpty) {
-          web.window.sessionStorage.removeItem('sb-pending-auth-query');
-          final params = Uri.splitQueryString(stash);
-          final accessToken = params['access_token'];
-          final refreshToken = params['refresh_token'];
-
-          if (accessToken != null && refreshToken != null) {
-            // Implicit flow — we have the tokens directly, set the session
-            await Supabase.instance.client.auth.setSession(refreshToken);
-          } else if (params['code'] != null) {
-            // PKCE flow — exchange the code via Supabase's URL handler
-            final url = Uri.parse('${Env.supabaseUrl}/?$stash');
-            await Supabase.instance.client.auth.getSessionFromUrl(url);
-          }
-        }
-      } catch (e) {
-        // ignore — user can sign in normally if recovery fails
-      }
-    }
+    // No-op on native; recovers a stashed OAuth redirect on web.
+    await recoverPendingWebAuth(client);
   }
 
   static User? get currentUser => client.auth.currentUser;

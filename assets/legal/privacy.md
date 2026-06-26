@@ -5,7 +5,7 @@ Effective date: 14 June 2026
 
 Version 1.0
 
-Data Controller: The TechForge Developers Ltd (operating Lintel)
+Data Controller: Techforge Developers Limited (operating Lintel)
 
 *This policy explains how Lintel collects, uses, and protects your personal data.*
 
@@ -49,7 +49,7 @@ Data Controller: The TechForge Developers Ltd (operating Lintel)
 
 # **1\. About this policy**
 
-This Privacy Policy describes how The TechForge Developers Ltd ("we," "us," or "our"), operating the Lintel platform ("Lintel," the "Service"), collects, uses, discloses, and otherwise processes personal data about you when you use our website, web application, mobile applications, and related services.
+This Privacy Policy describes how Techforge Developers Limited ("we," "us," or "our"), operating the Lintel platform ("Lintel," the "Service"), collects, uses, discloses, and otherwise processes personal data about you when you use our website, web application, mobile applications, and related services.
 
 Lintel is a software-as-a-service platform that enables real estate agencies and professionals to manage clients, contracts, properties, shortlet bookings, and payments. We act as a data controller in respect of personal data about our direct customers and as a data processor in respect of personal data that our customers (the agencies) upload or process about their own clients.
 
@@ -71,7 +71,7 @@ The data controller for the purposes of this policy is:
 
 | Field | Details |
 | :---- | :---- |
-| **Legal name** | The TechForge Developers Ltd |
+| **Legal name** | Techforge Developers Limited |
 | **Registration number (RC)** | 8371716 |
 | **Registered office** | 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 | **Trading name** | Lintel |
@@ -622,7 +622,7 @@ If you have any questions, concerns, or requests regarding this Privacy Policy o
 | **Data Protection Officer** | dpo@getlintel.org |
 | **Security issues** | security@getlintel.org |
 | **General support** | hello@getlintel.org |
-| **Postal address** | The TechForge Developers Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Postal address** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 
 We aim to acknowledge your enquiry within 5 working days and to provide a substantive response within 30 days. For urgent matters, please use the privacy@getlintel.org address and mark your message as urgent.
 

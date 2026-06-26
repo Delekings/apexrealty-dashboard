@@ -7,7 +7,7 @@ Effective date: 14 June 2026
 
 Version 1.0
 
-Provider: The Tech Forge Ltd  ·  RC 8371716
+Provider: Techforge Developers Limited  ·  RC 8371716
 
 **What this policy does.** This Policy governs how emails, SMS, and other electronic communications are sent through Lintel — both communications we send to you and communications you send to your End Clients. It explains compliance with anti-spam laws, how engagement tracking works, what you must do to maintain a good sender reputation, and how we enforce these rules.
 
@@ -67,7 +67,7 @@ Provider: The Tech Forge Ltd  ·  RC 8371716
 
 This Communications & Email Policy (the "Policy") sets out the rules for sending and receiving electronic communications through the Lintel platform. It covers:
 
-* Communications The Tech Forge Ltd ("Lintel," "we," "us," or "our") sends to you about your account, the Service, or our products;
+* Communications Techforge Developers Limited ("Lintel," "we," "us," or "our") sends to you about your account, the Service, or our products;
 
 * Communications you, as a Customer or Authorized User, send to End Clients or others through Lintel;
 
@@ -1342,12 +1342,12 @@ For questions or matters arising under this Policy:
 | **Privacy and data protection** | privacy@getlintel.org |
 | **Communications-specific feedback** | communications@getlintel.org |
 | **Legal questions about this Policy** | legal@getlintel.org |
-| **Postal address** | The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Postal address** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 
 We aim to acknowledge enquiries within 5 working days. Urgent deliverability or abuse matters should be marked urgent in the subject line.
 
 *End of Communications & Email Policy*
 
-Lintel · Version 1.0 · Effective 14 June 2026 · The Tech Forge Ltd · RC 8371716
+Lintel · Version 1.0 · Effective 14 June 2026 · Techforge Developers Limited · RC 8371716
 
 *This Policy is provided as a template. We strongly recommend independent legal review before adopting it.*

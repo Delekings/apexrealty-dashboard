@@ -1,10 +1,12 @@
 // lib/core/router/app_router.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/services/supabase_service.dart';
+import '../widgets/lintel_splash.dart';
 import '../../features/auth/presentation/screens/accept_invite_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
@@ -63,7 +65,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.watch(authStateProvider);
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: kIsWeb ? '/' : '/splash',
     refreshListenable: _AuthChangeNotifier(ref),
     debugLogDiagnostics: false,
     redirect: (context, state) {
@@ -72,6 +74,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       final path = state.uri.path;
 
       // ---------- Special cases first (no bouncing) ----------
+
+      // Password recovery: user is "logged in" via recovery token,
+      // but we want them to set a new password before anything else.
+      // Cold-start splash (native only) plays before any auth gating.
+      if (path == '/splash') return null;
 
       // Password recovery: user is "logged in" via recovery token,
       // but we want them to set a new password before anything else.
@@ -123,6 +130,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      // Cold-start animated splash; hands off to '/' (auth redirect decides).
+      GoRoute(
+        path: '/splash',
+        builder: (context, __) => LintelSplashScreen(
+          onComplete: () => context.go('/'),
+        ),
+      ),
       // -------------------- PUBLIC --------------------
       GoRoute(
         path: '/signin',

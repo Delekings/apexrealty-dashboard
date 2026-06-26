@@ -5,7 +5,7 @@ Effective date: 14 June 2026
 
 Version 1.0
 
-Provider: The Tech Forge Ltd  ·  RC 8371716
+Provider: Techforge Developers Limited  ·  RC 8371716
 
 **What this policy does.** This Policy describes the technical and organizational measures Lintel applies to protect the confidentiality, integrity, and availability of the Service and Customer Data. It is the preventive companion to the Incident Response Policy and supports our obligations under the NDPA, GDPR, and security commitments to Customers.
 
@@ -69,7 +69,7 @@ Provider: The Tech Forge Ltd  ·  RC 8371716
 
 ## **1.1 Purpose**
 
-This Security Policy (the "Policy") describes the technical and organizational measures ("TOMs") that The Tech Forge Ltd ("Lintel," "we," "us," or "our") implements to protect the Lintel platform (the "Service") and the data we hold within it.
+This Security Policy (the "Policy") describes the technical and organizational measures ("TOMs") that Techforge Developers Limited ("Lintel," "we," "us," or "our") implements to protect the Lintel platform (the "Service") and the data we hold within it.
 
 Its objectives are to:
 
@@ -1637,12 +1637,12 @@ For security-related enquiries:
 | **Audit and compliance enquiries** | dpo@getlintel.org |
 | **Legal questions about this Policy** | legal@getlintel.org |
 | **General product support** | hello@getlintel.org |
-| **Postal address** | The Tech Forge Ltd, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
+| **Postal address** | Techforge Developers Limited, 27 Carter Street, Ebute Metta, Lagos, Nigeria |
 
 We aim to acknowledge security enquiries within 4 working hours where possible, and respond substantively within 5 working days. For urgent security incidents in progress, mark your email "URGENT" in the subject line.
 
 *End of Security Policy*
 
-Lintel · Version 1.0 · Effective 14 June 2026 · The Tech Forge Ltd · RC 8371716
+Lintel · Version 1.0 · Effective 14 June 2026 · Techforge Developers Limited · RC 8371716
 
 *This Policy is provided as a template. We strongly recommend independent security and legal review before adopting it.*
