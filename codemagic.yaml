@@ -1,5 +1,5 @@
 # Codemagic CI/CD — Lintel (Techforge Developers Limited)
-# The app_store_connect integration name (Codemagic API Key) must match the
+# The app_store_connect integration name (ASC_API_KEY) must match the
 # App Store Connect API key name set in the Codemagic UI.
 workflows:
 
@@ -23,8 +23,10 @@ workflows:
       - build/**/outputs/bundle/**/*.aab
       - build/**/mapping.txt
     publishing:
+      # First release: comment this out, download the .aab artifact, and upload
+      # manually to the Play Console (Google requires the first build by hand).
       google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS   # Codemagic UI > Environment variables
         track: internal
         submit_as_draft: true
 
@@ -33,30 +35,23 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: Codemagic API Key   # <-- Codemagic UI integration name (provides ASC API creds)
+      app_store_connect: ASC_API_KEY   # <-- Codemagic UI integration name for the ASC API key
     environment:
       flutter: 3.22.0
       xcode: latest               # Xcode 26.x — meets Apple's iOS 26 SDK requirement
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: dev.thetechforge.lintel
       vars:
         APP_STORE_APPLE_ID: 6784547677
-        BUNDLE_ID: "dev.thetechforge.lintel"
     scripts:
       - name: Flutter packages
         script: flutter pub get
-      - name: Sign and build IPA
-        script: |
-          keychain initialize
-          # Create the App Store distribution cert + provisioning profile if missing.
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          # Stamp the profile onto every build config (Debug/Profile/Release)...
-          xcode-project use-profiles
-          # ...then build immediately in the SAME step so manual signing can't reset.
-          flutter build ipa --release \
-            --export-options-plist=/Users/builder/export_options.plist
+      - name: Pod install
+        script: find . -name "Podfile" -execdir pod install \;
+      - name: Build IPA
+        script: flutter build ipa --release --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
