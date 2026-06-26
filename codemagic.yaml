@@ -1,4 +1,6 @@
 # Codemagic CI/CD — Lintel (Techforge Developers Limited)
+# Produces a signed .ipa as a downloadable artifact.
+# Upload to App Store Connect is done manually via the Transporter app.
 workflows:
 
   ios-release:
@@ -43,12 +45,7 @@ workflows:
         script: |
           flutter build ipa --release --export-options-plist=/tmp/export.plist
           echo "=== IPA result ==="
-          find build/ios/ipa -name "*.ipa" || echo "NO IPA"
-      - name: Upload to App Store Connect
-        script: |
-          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
-          echo "Uploading $IPA"
-          app-store-connect publish --path "$IPA"
+          find build/ios/ipa -name "*.ipa" || echo "NO IPA — export failed"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
