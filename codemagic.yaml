@@ -1,6 +1,9 @@
 # Codemagic CI/CD — Lintel (Techforge Developers Limited)
 workflows:
 
+  # ===========================================================================
+  # iOS — UNCHANGED. Stays on Flutter 3.19.6 (matches the build in App Review).
+  # ===========================================================================
   ios-release:
     name: Lintel iOS Release
     instance_type: mac_mini_m2
@@ -57,3 +60,51 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
+
+  # ===========================================================================
+  # ANDROID — NEW. Flutter 3.35.x for 16 KB page-size support (newer engine
+  # ships 16 KB-aligned libflutter.so). Signs with the lintel_distribution
+  # keystore and builds the .aab for Google Play.
+  # ===========================================================================
+  android-release:
+    name: Lintel Android Release
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      flutter: 3.35.4
+      android_signing:
+        - lintel_distribution
+      vars:
+        PACKAGE_NAME: "dev.thetechforge.lintel"
+    scripts:
+      - name: Set up key.properties (from Codemagic keystore)
+        script: |
+          cat > "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+          echo "key.properties written:"
+          sed 's/=.*/=***/' "$CM_BUILD_DIR/android/key.properties"
+      - name: Un-pin pdf / printing for the newer Flutter engine
+        script: |
+          # On Flutter 3.35 the old ViewConfiguration.fromView problem is gone,
+          # so the 3.19-era pins (pdf 3.10.7 / printing 5.11.1) can move up.
+          # Relax them to caret ranges and let pub resolve compatible versions.
+          sed -i '' 's/^  pdf: 3.10.7/  pdf: ^3.11.0/' pubspec.yaml || sed -i 's/^  pdf: 3.10.7/  pdf: ^3.11.0/' pubspec.yaml
+          sed -i '' 's/^  printing: 5.11.1/  printing: ^5.13.0/' pubspec.yaml || sed -i 's/^  printing: 5.11.1/  printing: ^5.13.0/' pubspec.yaml
+          echo "=== pubspec pdf/printing now ==="
+          grep -E "pdf:|printing:" pubspec.yaml
+      - name: Flutter packages
+        script: flutter pub get
+      - name: Flutter analyze (non-blocking)
+        script: flutter analyze || true
+      - name: Build AAB
+        script: |
+          flutter build appbundle --release
+          echo "=== AAB result ==="
+          find build -name "*.aab" || echo "NO AAB"
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/**/outputs/**/mapping.txt
