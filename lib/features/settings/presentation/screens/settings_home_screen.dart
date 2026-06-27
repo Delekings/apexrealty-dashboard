@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/auth/permissions.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/platform/store_policy.dart';
 
 /// Settings landing page reached from the account menu. Replaces the old
 /// sidebar "Settings" section; tiles are gated by the same permissions the
@@ -17,7 +18,7 @@ class SettingsHomeScreen extends ConsumerWidget {
     final perms = ref.watch(permissionsProvider);
 
     final tiles = <Widget>[];
-    if (perms.isAdmin) {
+    if (perms.isAdmin && !kHideBillingForAppStore) {
       tiles.add(_tile(
         context,
         Icons.credit_card_outlined,

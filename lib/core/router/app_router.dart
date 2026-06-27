@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/services/supabase_service.dart';
 import '../widgets/lintel_splash.dart';
+import '../platform/store_policy.dart';
 import '../../features/auth/presentation/screens/accept_invite_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/reset_password_screen.dart';
@@ -209,6 +210,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/settings/billing',
+            redirect: (_, __) => kHideBillingForAppStore ? '/settings' : null,
             builder: (_, __) => const BillingScreen(),
           ),
           GoRoute(
