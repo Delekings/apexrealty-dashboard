@@ -62,10 +62,18 @@ Deno.serve(async (req) => {
         // 3a. Test send — deliver the draft straight to a raw address. No client
         //     row, no campaign/message logging, no unsubscribe check. Used by the
         //     composer's "Send test" button so people can preview in their inbox.
+        //
+        //     If the testEmail matches a client record in this agency, we use that
+        //     client's name to personalise {{first_name}}, {{last_name}}, {{name}}
+        //     placeholders — so the sender sees exactly what their real clients see.
+        //     If no match, placeholders are replaced with empty strings (same as
+        //     bulk sends when a client has no name on file).
         if (typeof body.testEmail === "string" && body.testEmail.trim()) {
             if (!body.subject || !body.html) {
                 return json({ error: "Missing subject/html" }, 400);
             }
+
+            // Load agency email config + agency name
             const { data: cfgT } = await supabase
                 .from("email_provider_config")
                 .select("from_name, reply_to_email")
@@ -81,6 +89,33 @@ Deno.serve(async (req) => {
             const fromEmailT =
                 Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
 
+            // Look up a client with this email in the same agency so we can
+            // personalise the preview exactly as a real send would look.
+            const { data: testClient } = await supabase
+                .from("clients")
+                .select("full_name")
+                .eq("agency_id", agencyId)
+                .eq("email", body.testEmail.trim())
+                .maybeSingle();
+
+            // Split name into parts using the same logic as email-send-bulk.
+            const clientName = testClient?.full_name ?? "";
+            const nameParts = clientName.trim().split(/\s+/);
+            const firstName = nameParts[0] ?? "";
+            const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
+            // Substitute placeholders in both subject and body.
+            const personalisedHtml = body.html
+                .replaceAll("{{name}}", clientName)
+                .replaceAll("{{full_name}}", clientName)
+                .replaceAll("{{first_name}}", firstName)
+                .replaceAll("{{last_name}}", lastName);
+            const personalisedSubject = body.subject
+                .replaceAll("{{name}}", clientName)
+                .replaceAll("{{full_name}}", clientName)
+                .replaceAll("{{first_name}}", firstName)
+                .replaceAll("{{last_name}}", lastName);
+
             const testRes = await fetch(RESEND_API_URL, {
                 method: "POST",
                 headers: {
@@ -90,8 +125,8 @@ Deno.serve(async (req) => {
                 body: JSON.stringify({
                     from: `${fromNameT} <${fromEmailT}>`,
                     to: [body.testEmail.trim()],
-                    subject: `[TEST] ${body.subject}`,
-                    html: body.html,
+                    subject: `[TEST] ${personalisedSubject}`,
+                    html: personalisedHtml,
                     reply_to: replyToT,
                 }),
             });
