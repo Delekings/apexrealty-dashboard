@@ -649,6 +649,32 @@ class EmailRepository {
       return ids.length;
     }
 
+    if (type == 'by_tag') {
+      final tagIds = (filter['tagIds'] as List?)?.cast<String>() ?? [];
+      if (tagIds.isEmpty) return 0;
+      // Resolve client ids from the tag assignments, then count those with a
+      // subscribed email — same logic as the by_tag branch in email-send-bulk.
+      final assignments = await _c
+          .from('client_tag_assignments')
+          .select('client_id')
+          .eq('agency_id', agencyId)
+          .inFilter('tag_id', tagIds);
+      final clientIds = <String>{};
+      for (final r in assignments as List) {
+        clientIds.add((r as Map<String, dynamic>)['client_id'] as String);
+      }
+      if (clientIds.isEmpty) return 0;
+      final r = await _c
+          .from('clients')
+          .select('id')
+          .eq('agency_id', agencyId)
+          .inFilter('id', clientIds.toList())
+          .not('email', 'is', null)
+          .eq('email_subscribed', true)
+          .count(CountOption.exact);
+      return r.count;
+    }
+
     return 0;
   }
 

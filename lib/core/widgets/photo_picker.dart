@@ -13,7 +13,7 @@ class PickedPhoto {
   PickedPhoto({required this.bytes, required this.filename});
 }
 
-/// Multi-image picker — works on web (uses FilePicker.platform.pickFiles).
+/// Multi-image picker — works on web (uses FilePicker.pickFiles).
 /// Shows thumbnails of selected files, lets you remove them before uploading.
 class PhotoPicker extends StatefulWidget {
   final ValueChanged<List<PickedPhoto>> onChanged;
@@ -33,7 +33,7 @@ class _PhotoPickerState extends State<PhotoPicker> {
   final List<PickedPhoto> _photos = [];
 
   Future<void> _pick() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       type: FileType.image,
       allowMultiple: true,
       withData: true,  // we need bytes since web has no file paths

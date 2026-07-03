@@ -33,7 +33,7 @@ class _SingleFilePickerState extends State<SingleFilePicker> {
   PickedFile? _file;
 
   Future<void> _pick() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: widget.allowedExtensions,
       withData: true,

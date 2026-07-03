@@ -164,7 +164,7 @@ class _NewBookingScreenState extends ConsumerState<NewBookingScreen> {
     });
 
     try {
-      final profile = ref.read(currentProfileProvider).valueOrNull;
+      final profile = ref.read(currentProfileProvider).value;
       if (profile?.agencyId == null) {
         throw Exception('No agency on profile');
       }

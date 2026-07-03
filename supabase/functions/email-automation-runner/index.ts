@@ -182,7 +182,11 @@ async function processAutomation(
             .eq("id", auto.agency_id)
             .single();
 
-        const fromName = cfg?.from_name ?? agency?.name ?? "Lintel";
+        // Guard: if from_name looks like an email address, fall through to agency.name.
+        const rawFromName = cfg?.from_name;
+        const fromName = (rawFromName && !rawFromName.includes("@"))
+            ? rawFromName
+            : (agency?.name ?? "Lintel");
         const replyTo = cfg?.reply_to_email ?? agency?.email ?? undefined;
         const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
         const fromHeader = `${fromName} <${fromEmail}>`;
@@ -266,6 +270,7 @@ async function processAutomation(
                 const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
                 const personalisedSubject = auto.subject_template
                     .replaceAll("{{name}}", clientName)
+                    .replaceAll("{{full_name}}", clientName)
                     .replaceAll("{{first_name}}", firstName)
                     .replaceAll("{{last_name}}", lastName);
                 const personalisedHtml = auto.body_html_template

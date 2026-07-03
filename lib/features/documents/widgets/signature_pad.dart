@@ -48,7 +48,7 @@ class _SignaturePadState extends State<SignaturePad> {
       _mode == SignatureMode.draw ? _strokes.isNotEmpty : _uploadedBytes != null;
 
   Future<void> _pickUpload() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['png', 'jpg', 'jpeg', 'webp'],
       withData: true,

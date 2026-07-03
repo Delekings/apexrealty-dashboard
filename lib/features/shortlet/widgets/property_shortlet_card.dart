@@ -44,7 +44,7 @@ class PropertyShortletCard extends ConsumerWidget {
               style: const TextStyle(
                   fontSize: 12, color: AppColors.danger)),
           data: (listings) {
-            final unitTypes = unitTypesAsync.valueOrNull ?? const [];
+            final unitTypes = unitTypesAsync.value ?? const [];
             return _buildContent(context, ref, listings, unitTypes);
           },
         ),

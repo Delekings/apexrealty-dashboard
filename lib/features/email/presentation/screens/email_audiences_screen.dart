@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/email_audiences_repository.dart';
 import '../../../../data/repositories/email_repository.dart';
 import '../../providers/email_audiences_providers.dart';
+import '../../../clients/providers/client_tags_providers.dart';
 import 'package:lintel/core/widgets/lintel_loader.dart';
 
 final _audEmailRepoProvider = Provider((_) => EmailRepository());
@@ -213,6 +214,7 @@ class _AudienceEditorDialogState
   late final TextEditingController _description;
   String _filterType = 'all';
   final Set<String> _selectedStates = {};
+  final Set<String> _selectedTagIds = {};
 
   bool _saving = false;
   String? _error;
@@ -227,6 +229,8 @@ class _AudienceEditorDialogState
       _filterType = e.filterType;
       final states = (e.filter['states'] as List?)?.cast<String>() ?? const [];
       _selectedStates.addAll(states);
+      final tagIds = (e.filter['tagIds'] as List?)?.cast<String>() ?? const [];
+      _selectedTagIds.addAll(tagIds);
     }
   }
 
@@ -245,6 +249,8 @@ class _AudienceEditorDialogState
         return {'type': 'has_active_contract'};
       case 'has_overdue':
         return {'type': 'has_overdue'};
+      case 'by_tag':
+        return {'type': 'by_tag', 'tagIds': _selectedTagIds.toList()};
       case 'all':
       default:
         return {'type': 'all'};
@@ -258,6 +264,10 @@ class _AudienceEditorDialogState
     }
     if (_filterType == 'by_state' && _selectedStates.isEmpty) {
       setState(() => _error = 'Pick at least one state');
+      return;
+    }
+    if (_filterType == 'by_tag' && _selectedTagIds.isEmpty) {
+      setState(() => _error = 'Select at least one tag');
       return;
     }
 
@@ -352,6 +362,56 @@ class _AudienceEditorDialogState
                               'Clients with an active contract'),
                           _radioOption('has_overdue',
                               'Clients with overdue installments'),
+                          _radioOption(
+                              'by_tag', 'Clients with a specific tag'),
+                          if (_filterType == 'by_tag') ...[
+                            const SizedBox(height: 8),
+                            ref.watch(clientTagsProvider).when(
+                              loading: () => const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 4),
+                                child: LinearProgressIndicator(),
+                              ),
+                              error: (e, _) => Text(
+                                  'Could not load tags: $e',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.danger)),
+                              data: (tags) {
+                                if (tags.isEmpty) {
+                                  return const Text(
+                                    'No tags created yet. Add tags to '
+                                    'clients first.',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.muted),
+                                  );
+                                }
+                                return Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final t in tags)
+                                      FilterChip(
+                                        label: Text(t.name,
+                                            style: const TextStyle(
+                                                fontSize: 11)),
+                                        selected:
+                                            _selectedTagIds.contains(t.id),
+                                        onSelected: (sel) {
+                                          setState(() {
+                                            if (sel) {
+                                              _selectedTagIds.add(t.id);
+                                            } else {
+                                              _selectedTagIds.remove(t.id);
+                                            }
+                                          });
+                                        },
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
                           _radioOption(
                               'by_state', 'Clients in specific state(s)'),
                           if (_filterType == 'by_state') ...[

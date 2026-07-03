@@ -127,9 +127,18 @@ class _Body extends StatelessWidget {
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 320, child: _OverviewCard(detail: detail)),
+                    SizedBox(
+                      width: 320,
+                      child: SingleChildScrollView(
+                        child: _OverviewCard(detail: detail),
+                      ),
+                    ),
                     const SizedBox(width: 16),
-                    Expanded(child: _MainColumn(detail: detail)),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: _MainColumn(detail: detail),
+                      ),
+                    ),
                   ],
                 )
               : SingleChildScrollView(

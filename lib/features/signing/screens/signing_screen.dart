@@ -662,7 +662,7 @@ class _SigningScreenState extends ConsumerState<SigningScreen> {
   Future<void> _submit() async {
     if (_signatureBytes == null || _signatureMethod == null) return;
 
-    final ctx = ref.read(signingContextProvider(widget.token)).valueOrNull;
+    final ctx = ref.read(signingContextProvider(widget.token)).value;
     if (ctx == null) return;
 
     setState(() {

@@ -92,9 +92,10 @@ interface BulkSendRequest {
 }
 
 interface RecipientFilter {
-    type: "all" | "by_state" | "has_active_contract" | "has_overdue" | "specific";
+    type: "all" | "by_state" | "has_active_contract" | "has_overdue" | "specific" | "by_tag";
     states?: string[]; // for by_state
     clientIds?: string[]; // for specific
+    tagIds?: string[]; // for by_tag
 }
 
 Deno.serve(async (req) => {
@@ -176,7 +177,12 @@ Deno.serve(async (req) => {
             .eq("id", agencyId)
             .single();
 
-        const fromName = cfg?.from_name ?? agency?.name ?? "Lintel";
+        // Guard: if from_name looks like an email address (someone filled the wrong
+        // field in email settings), fall through to agency.name instead.
+        const rawFromName = cfg?.from_name;
+        const fromName = (rawFromName && !rawFromName.includes("@"))
+            ? rawFromName
+            : (agency?.name ?? "Lintel");
         const replyTo = cfg?.reply_to_email ?? agency?.email ?? undefined;
         const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
         const fromHeader = `${fromName} <${fromEmail}>`;
@@ -240,10 +246,12 @@ Deno.serve(async (req) => {
             const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
             const personalisedHtml = body.html
                 .replaceAll("{{name}}", clientName)
+                .replaceAll("{{full_name}}", clientName)
                 .replaceAll("{{first_name}}", firstName)
                 .replaceAll("{{last_name}}", lastName);
             const personalisedSubject = body.subject
                 .replaceAll("{{name}}", clientName)
+                .replaceAll("{{full_name}}", clientName)
                 .replaceAll("{{first_name}}", firstName)
                 .replaceAll("{{last_name}}", lastName);
             try {
@@ -343,6 +351,30 @@ async function resolveRecipients(
                 full_name: r.full_name,
                 email: r.email,
             }));
+    }
+
+    if (filter.type === "by_tag") {
+        // Clients carrying ANY of the selected tags. Resolve client_ids from the
+        // assignment join table first, then load those clients.
+        const tagIds = filter.tagIds ?? [];
+        if (tagIds.length === 0) return [];
+        const { data: assignments } = await supabase
+            .from("client_tag_assignments")
+            .select("client_id")
+            .eq("agency_id", agencyId)
+            .in("tag_id", tagIds);
+        const clientIds = Array.from(
+            new Set(((assignments ?? []) as Array<any>).map((a) => a.client_id)),
+        );
+        if (clientIds.length === 0) return [];
+        const { data } = await supabase
+            .from("clients")
+            .select("id, full_name, email, email_subscribed")
+            .eq("agency_id", agencyId)
+            .in("id", clientIds);
+        return ((data ?? []) as Array<any>)
+            .filter((r) => r.email_subscribed !== false && r.email)
+            .map((r) => ({ id: r.id, full_name: r.full_name, email: r.email }));
     }
 
     if (filter.type === "by_state") {

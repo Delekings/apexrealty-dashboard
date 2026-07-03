@@ -9,6 +9,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../data/repositories/clients_repository.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../providers/client_tags_providers.dart';
+import '../widgets/tag_picker.dart';
 import '../../services/import_parser.dart';
 
 final _clientsRepoProvider = Provider((_) => ClientsRepository());
@@ -25,6 +28,9 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
   // Parsing state
   List<String> _headers = [];
   List<List<String>> _rawRows = [];
+
+  // Tags applied to the whole imported batch (2A).
+  Set<String> _batchTagIds = {};
   Map<String, int> _mapping = {};
 
   // Editable state
@@ -47,7 +53,7 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
   // ---------- Source handlers ----------
 
   Future<void> _pickFile() async {
-    final res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv', 'xlsx', 'xls'],
       withData: true,
@@ -122,6 +128,22 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
           .read(_clientsRepoProvider)
           .bulkImport(validRows.map((r) => r.toRpcMap()).toList());
       setState(() => _results = res);
+
+      // Apply the batch tags to every successfully inserted client (2A).
+      if (_batchTagIds.isNotEmpty) {
+        final insertedIds = res
+            .where((r) => r.isSuccess && r.clientId != null)
+            .map((r) => r.clientId!)
+            .toList();
+        final profile = ref.read(currentProfileProvider).value;
+        if (insertedIds.isNotEmpty && profile?.agencyId != null) {
+          await ref.read(clientTagsRepoProvider).assignTagsToClients(
+                agencyId: profile!.agencyId!,
+                clientIds: insertedIds,
+                tagIds: _batchTagIds.toList(),
+              );
+        }
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Import failed: $e')));
@@ -369,6 +391,35 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
                 for (int i = 0; i < _rows.length; i++) _buildRow(i),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.brandLight.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tag this batch (optional)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Any tags you pick here are applied to every client in this '
+                'import — handy for grouping them for future campaigns.',
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              ),
+              const SizedBox(height: 12),
+              TagPicker(
+                selectedTagIds: _batchTagIds,
+                onChanged: (ids) => setState(() => _batchTagIds = ids),
+                label: 'Apply to all imported clients',
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),

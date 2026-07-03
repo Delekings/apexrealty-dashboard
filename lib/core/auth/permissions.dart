@@ -117,7 +117,7 @@ class PermissionSet {
 
 /// The current user's permission set. Watch this anywhere you need to gate.
 final permissionsProvider = Provider<PermissionSet>((ref) {
-  final profile = ref.watch(currentProfileProvider).valueOrNull;
+  final profile = ref.watch(currentProfileProvider).value;
   if (profile == null) {
     // Most-restrictive default while loading
     return const PermissionSet(role: UserRole.viewer, isExternal: false);

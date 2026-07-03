@@ -47,7 +47,7 @@ class _SignatureProgressCardState
   String? _error;
 
   Future<void> _downloadOrFinalize() async {
-    final profile = ref.read(currentProfileProvider).valueOrNull;
+    final profile = ref.read(currentProfileProvider).value;
     if (profile?.agencyId == null) return;
 
     setState(() {

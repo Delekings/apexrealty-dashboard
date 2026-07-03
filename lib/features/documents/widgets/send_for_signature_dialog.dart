@@ -63,7 +63,7 @@ class _SendForSignatureDialogState
     });
 
     try {
-      final profile = ref.read(currentProfileProvider).valueOrNull;
+      final profile = ref.read(currentProfileProvider).value;
       if (profile?.agencyId == null) {
         throw Exception('No agency on your profile');
       }
@@ -159,7 +159,7 @@ class _SendForSignatureDialogState
   Widget build(BuildContext context) {
     if (_result != null) return _successView();
 
-    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final profile = ref.watch(currentProfileProvider).value;
     final agencyId = profile?.agencyId;
 
     return Dialog(

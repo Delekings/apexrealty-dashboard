@@ -1,180 +1,30 @@
-<!DOCTYPE html><html><head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="The all-in-one property management platform for Nigerian real estate agencies. Manage clients, contracts, shortlets, and payments in one workspace. NDPA-compliant. Start free.">
+  <meta property="og:title" content="Lintel — Property Management Software for Nigerian Real Estate Agencies">
+  <meta property="og:description" content="The all-in-one platform for Nigerian real estate agencies. CRM, contracts, shortlets, payments.">
+  <meta property="og:type" content="website">
 
   <!-- iOS meta tags & icons -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="lintel">
+  <meta name="apple-mobile-web-app-title" content="Lintel">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>lintel</title>
+  <title>Lintel — Property Management Software for Nigerian Real Estate Agencies</title>
   <link rel="manifest" href="manifest.json">
-
-  <script>
-    // The value below is injected by flutter build, do not touch.
-    const serviceWorkerVersion = null;
-  </script>
-  <!-- This script adds the flutter initialization JS code -->
-  <script src="flutter.js" defer=""></script>
-  <style id="splash-screen-style">
-    html {
-      height: 100%
-    }
-
-    body {
-      margin: 0;
-      min-height: 100%;
-      background-color: #0F4F37;
-          background-size: 100% 100%;
-    }
-
-    .center {
-      margin: 0;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      -ms-transform: translate(-50%, -50%);
-      transform: translate(-50%, -50%);
-    }
-
-    .contain {
-      display:block;
-      width:100%; height:100%;
-      object-fit: contain;
-    }
-
-    .stretch {
-      display:block;
-      width:100%; height:100%;
-    }
-
-    .cover {
-      display:block;
-      width:100%; height:100%;
-      object-fit: cover;
-    }
-
-    .bottom {
-      position: absolute;
-      bottom: 0;
-      left: 50%;
-      -ms-transform: translate(-50%, 0);
-      transform: translate(-50%, 0);
-    }
-
-    .bottomLeft {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-    }
-
-    .bottomRight {
-      position: absolute;
-      bottom: 0;
-      right: 0;
-    }
-  </style>
-  <script id="splash-screen-script">
-    function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
-    }
-  </script>
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
 </head>
 <body>
-<script>
-  // ====== Lintel auth shim ======
-  // Supabase invite/recovery emails redirect us back with auth tokens.
-  // Depending on the auth flow (PKCE vs implicit), these arrive in
-  // different URL shapes. We need to normalize all of them so Flutter's
-  // hash router doesn't choke on the tokens.
-  (function() {
-    try {
-      var hash = window.location.hash || '';
-      var search = window.location.search || '';
-
-      // === Pattern 1: PKCE — #/route?code=... (query INSIDE hash) ===
-      var qIdx = hash.indexOf('?');
-      if (qIdx > 0) {
-        var hashPath = hash.substring(0, qIdx);
-        var hashQuery = hash.substring(qIdx + 1);
-        if (hashQuery.indexOf('code=') !== -1 ||
-                hashQuery.indexOf('access_token=') !== -1 ||
-                hashQuery.indexOf('token_hash=') !== -1 ||
-                hashQuery.indexOf('error=') !== -1) {
-          try { sessionStorage.setItem('sb-pending-auth-query', hashQuery); } catch (_) {}
-          history.replaceState(null, '', window.location.pathname + '?' + hashQuery + hashPath);
-          return;
-        }
-      }
-
-      // === Pattern 2: Implicit — #access_token=...&type=invite (no /route) ===
-      if (hash.length > 1) {
-        var fragmentBody = hash.startsWith('#') ? hash.substring(1) : hash;
-        if (fragmentBody.indexOf('access_token=') !== -1 ||
-                fragmentBody.indexOf('error_code=') !== -1 ||
-                fragmentBody.indexOf('token_hash=') !== -1) {
-          // No path in the fragment, so we just stash and route to /accept-invite
-          // (we have to assume invite/recovery since access_token landed here)
-          try { sessionStorage.setItem('sb-pending-auth-query', fragmentBody); } catch (_) {}
-          history.replaceState(null, '', window.location.pathname + '?' + fragmentBody + '#/accept-invite');
-          return;
-        }
-      }
-
-      // === Pattern 3: Real query string with auth (already correct, just stash) ===
-      if (search.length > 1) {
-        var searchBody = search.startsWith('?') ? search.substring(1) : search;
-        if (searchBody.indexOf('access_token=') !== -1 ||
-                searchBody.indexOf('code=') !== -1 ||
-                searchBody.indexOf('error_code=') !== -1) {
-          try { sessionStorage.setItem('sb-pending-auth-query', searchBody); } catch (_) {}
-          // Keep the URL but ensure the hash routes to /accept-invite
-          if (!hash || hash === '#' || hash === '#/') {
-            history.replaceState(null, '', window.location.pathname + window.location.search + '#/accept-invite');
-          }
-        }
-      }
-    } catch (e) {
-      console.error('auth shim error', e);
-    }
-  })();
-
-  window.addEventListener('load', function(ev) {
-    _flutter.loader.loadEntrypoint({
-      serviceWorker: {
-        serviceWorkerVersion: serviceWorkerVersion,
-      },
-      onEntrypointLoaded: function(engineInitializer) {
-        engineInitializer.initializeEngine().then(function(appRunner) {
-          appRunner.runApp();
-        });
-      }
-    });
-  });
-</script>
-
-
-</body></html>
+  <script src="https://github.com/corbado/flutter-passkeys/releases/download/2.4.0/bundle.js"></script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

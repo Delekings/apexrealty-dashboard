@@ -1,0 +1,1 @@
+/Users/mac/projects/lintel-project/lintel/build/app/intermediates/cxx/RelWithDebInfo/6g623a16/obj/arm64-v8a

@@ -1,0 +1,172 @@
+// lib/features/clients/presentation/widgets/tag_picker.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../../core/theme/app_theme.dart';
+import '../../../../data/repositories/client_tags_repository.dart';
+import '../../../auth/providers/auth_providers.dart';
+import '../../providers/client_tags_providers.dart';
+
+/// A multi-select tag picker with inline "create new tag".
+///
+/// Shows existing agency tags as toggleable chips. A text field + "Add" button
+/// lets the user create a brand-new tag on the spot (nothing is hardcoded —
+/// every tag here was created by the agency). Selected tag ids are reported via
+/// [onChanged].
+class TagPicker extends ConsumerStatefulWidget {
+  final Set<String> selectedTagIds;
+  final ValueChanged<Set<String>> onChanged;
+  final String label;
+
+  const TagPicker({
+    super.key,
+    required this.selectedTagIds,
+    required this.onChanged,
+    this.label = 'Categories / tags',
+  });
+
+  @override
+  ConsumerState<TagPicker> createState() => _TagPickerState();
+}
+
+class _TagPickerState extends ConsumerState<TagPicker> {
+  final _newTag = TextEditingController();
+  bool _creating = false;
+
+  @override
+  void dispose() {
+    _newTag.dispose();
+    super.dispose();
+  }
+
+  Future<void> _createTag() async {
+    final name = _newTag.text.trim();
+    if (name.isEmpty) return;
+    setState(() => _creating = true);
+    try {
+      final profile = ref.read(currentProfileProvider).value;
+      if (profile?.agencyId == null) return;
+      final repo = ref.read(clientTagsRepoProvider);
+      final tag = await repo.createTag(
+        agencyId: profile!.agencyId!,
+        name: name,
+      );
+      // Refresh the tag list and auto-select the new tag.
+      ref.invalidate(clientTagsProvider);
+      final next = {...widget.selectedTagIds, tag.id};
+      widget.onChanged(next);
+      _newTag.clear();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not create tag')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _creating = false);
+    }
+  }
+
+  void _toggle(String tagId) {
+    final next = {...widget.selectedTagIds};
+    if (next.contains(tagId)) {
+      next.remove(tagId);
+    } else {
+      next.add(tagId);
+    }
+    widget.onChanged(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tagsAsync = ref.watch(clientTagsProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.label,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        ),
+        const SizedBox(height: 8),
+        tagsAsync.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: SizedBox(
+              height: 18, width: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+          error: (e, _) => Text(
+            'Could not load tags',
+            style: TextStyle(color: Colors.red.shade400, fontSize: 12),
+          ),
+          data: (tags) {
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in tags)
+                  FilterChip(
+                    label: Text(t.name),
+                    selected: widget.selectedTagIds.contains(t.id),
+                    onSelected: (_) => _toggle(t.id),
+                    selectedColor: AppColors.brand.withOpacity(0.15),
+                    checkmarkColor: AppColors.brand,
+                    labelStyle: TextStyle(
+                      color: widget.selectedTagIds.contains(t.id)
+                          ? AppColors.brand
+                          : Colors.black87,
+                      fontWeight: widget.selectedTagIds.contains(t.id)
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                if (tags.isEmpty)
+                  Text(
+                    'No tags yet — create your first one below.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _newTag,
+                decoration: const InputDecoration(
+                  hintText: 'New tag name (e.g. Lekki Landlords)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _createTag(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 40,
+              child: ElevatedButton(
+                onPressed: _creating ? null : _createTag,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.brand,
+                  foregroundColor: Colors.white,
+                ),
+                child: _creating
+                    ? const SizedBox(
+                        height: 16, width: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white,
+                        ),
+                      )
+                    : const Text('Add'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}

@@ -52,6 +52,10 @@ class EmailAudience {
         return 'Clients with an active contract';
       case 'has_overdue':
         return 'Clients with an overdue payment';
+      case 'by_tag':
+        final tagIds = (filter['tagIds'] as List?)?.cast<String>() ?? const [];
+        if (tagIds.isEmpty) return 'Clients by tag';
+        return 'Clients with ${tagIds.length} tag(s)';
       case 'all':
       default:
         return 'All subscribed clients';

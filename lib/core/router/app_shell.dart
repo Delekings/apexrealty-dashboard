@@ -140,7 +140,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     // tree (e.g. when Supabase fires a PASSWORD_RECOVERY event).
     captureRouterContext(context);
 
-    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final profile = ref.watch(currentProfileProvider).value;
 
     switch (context.breakpoint) {
     // ---------- DESKTOP: full labelled sidebar ----------

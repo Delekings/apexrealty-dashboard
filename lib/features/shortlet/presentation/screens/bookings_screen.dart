@@ -129,19 +129,19 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen>
             children: [
               _statCard(
                 label: 'Upcoming',
-                value: upcoming.valueOrNull?.length.toString() ?? '–',
+                value: upcoming.value?.length.toString() ?? '–',
                 icon: Icons.event_outlined,
                 color: AppColors.brand,
               ),
               _statCard(
                 label: 'In-house now',
-                value: inHouse.valueOrNull?.length.toString() ?? '–',
+                value: inHouse.value?.length.toString() ?? '–',
                 icon: Icons.king_bed_outlined,
                 color: AppColors.info,
               ),
               _statCard(
                 label: 'Past 30 days',
-                value: past.valueOrNull?.length.toString() ?? '–',
+                value: past.value?.length.toString() ?? '–',
                 icon: Icons.history,
                 color: AppColors.muted,
               ),

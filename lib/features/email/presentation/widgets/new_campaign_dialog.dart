@@ -7,6 +7,7 @@ import '../../../../data/repositories/email_repository.dart';
 import '../../../../data/services/supabase_service.dart';
 import '../../../../data/repositories/email_audiences_repository.dart';
 import '../../providers/email_audiences_providers.dart';
+import '../../../clients/providers/client_tags_providers.dart';
 
 final _emailRepoProvider = Provider((_) => EmailRepository());
 
@@ -36,6 +37,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
 
   String _filterType = 'all';
   final Set<String> _selectedStates = {};
+  final Set<String> _selectedTagIds = {};
 
   int? _recipientCount;
   bool _countingRecipients = false;
@@ -76,6 +78,11 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
         _selectedStates.addAll(
             (a.filter['states'] as List?)?.cast<String>() ?? const []);
       }
+      _selectedTagIds.clear();
+      if (t == 'by_tag') {
+        _selectedTagIds.addAll(
+            (a.filter['tagIds'] as List?)?.cast<String>() ?? const []);
+      }
     });
     _refreshCount();
   }
@@ -88,6 +95,8 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
         return {'type': 'has_active_contract'};
       case 'has_overdue':
         return {'type': 'has_overdue'};
+      case 'by_tag':
+        return {'type': 'by_tag', 'tagIds': _selectedTagIds.toList()};
       case 'all':
       default:
         return {'type': 'all'};
@@ -182,6 +191,10 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
       setState(() => _error = 'Pick at least one state');
       return;
     }
+    if (_filterType == 'by_tag' && _selectedTagIds.isEmpty) {
+      setState(() => _error = 'Select at least one tag');
+      return;
+    }
 
     final confirmed = await _confirmSend();
     if (confirmed != true) return;
@@ -227,6 +240,10 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
       setState(() => _error = 'Pick at least one state');
       return;
     }
+    if (_filterType == 'by_tag' && _selectedTagIds.isEmpty) {
+      setState(() => _error = 'Select at least one tag');
+      return;
+    }
 
     setState(() {
       _sending = true;
@@ -263,11 +280,22 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
   /// shell and turn newlines into <br>.
   String _renderHtml(String body) {
     if (_htmlMode) return body;
+    final linked = _linkifyUrls(body);
     return '''
         <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #222;">
-          ${body.replaceAll('\n', '<br>')}
+          ${linked.replaceAll('\n', '<br>')}
         </div>
       ''';
+  }
+
+  /// Wraps bare http(s) URLs in <a href> anchors so Resend can rewrite and
+  /// track clicks. Plain-text URLs are never click-tracked.
+  String _linkifyUrls(String text) {
+    final urlRegex = RegExp(r'(https?://[^\s<]+)', caseSensitive: false);
+    return text.replaceAllMapped(urlRegex, (m) {
+      final url = m.group(0)!;
+      return '<a href="$url" style="color:#0F4F37;text-decoration:underline;">$url</a>';
+    });
   }
 
   Future<void> _sendTest() async {
@@ -660,6 +688,49 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
           _radioOption(
               'has_active_contract', 'Clients with an active contract'),
           _radioOption('has_overdue', 'Clients with overdue installments'),
+          _radioOption('by_tag', 'Clients with a specific tag'),
+          if (_filterType == 'by_tag') ...[
+            const SizedBox(height: 8),
+            ref.watch(clientTagsProvider).when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: LinearProgressIndicator(),
+              ),
+              error: (e, _) => Text('Could not load tags: $e',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.danger)),
+              data: (tags) {
+                if (tags.isEmpty) {
+                  return const Text(
+                    'No tags created yet. Add tags to clients first.',
+                    style: TextStyle(fontSize: 11, color: AppColors.muted),
+                  );
+                }
+                return Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final t in tags)
+                      FilterChip(
+                        label: Text(t.name,
+                            style: const TextStyle(fontSize: 11)),
+                        selected: _selectedTagIds.contains(t.id),
+                        onSelected: (sel) {
+                          setState(() {
+                            if (sel) {
+                              _selectedTagIds.add(t.id);
+                            } else {
+                              _selectedTagIds.remove(t.id);
+                            }
+                          });
+                          _refreshCount();
+                        },
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
           _radioOption('by_state', 'Clients in specific state(s)'),
           if (_filterType == 'by_state') ...[
             const SizedBox(height: 8),

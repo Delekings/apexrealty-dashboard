@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required so release builds can reach Supabase, Flutterwave, Resend, etc.
+         Debug/profile manifests add this automatically; release does NOT. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Lintel"
         android:name="${applicationName}"

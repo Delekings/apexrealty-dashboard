@@ -358,7 +358,7 @@ class _AddMorePhotosFlowState extends ConsumerState<_AddMorePhotosFlow> {
       _error = null;
     });
     try {
-      final profile = ref.read(currentProfileProvider).valueOrNull;
+      final profile = ref.read(currentProfileProvider).value;
       if (profile?.agencyId == null) {
         throw Exception('No agency on profile');
       }

@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/legacy.dart';
 // lib/features/clients/providers/clients_providers.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

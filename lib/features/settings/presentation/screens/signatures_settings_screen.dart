@@ -18,7 +18,7 @@ class SignaturesSettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(currentProfileProvider).valueOrNull;
+    final profile = ref.watch(currentProfileProvider).value;
     final agencyId = profile?.agencyId;
 
     if (agencyId == null) {
@@ -930,7 +930,7 @@ class _SealPreviewImage extends ConsumerWidget {
 // File picker for seal images. Returns the picked image bytes, or null
 // if the user cancelled or no image was selected.
 Future<Uint8List?> _pickImage() async {
-  final res = await FilePicker.platform.pickFiles(
+  final res = await FilePicker.pickFiles(
     type: FileType.custom,
     allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
     withData: true,

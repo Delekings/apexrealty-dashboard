@@ -95,7 +95,7 @@
 //   }
 //
 //   Future<void> _submit() async {
-//     final profile = ref.read(currentProfileProvider).valueOrNull;
+//     final profile = ref.read(currentProfileProvider).value;
 //     if (profile?.agencyId == null) {
 //       setState(() => _error = 'No agency on your profile');
 //       return;

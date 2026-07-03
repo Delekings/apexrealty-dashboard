@@ -8,6 +8,8 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../data/models/models.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../providers/clients_providers.dart';
+import '../../providers/client_tags_providers.dart';
+import '../widgets/tag_picker.dart';
 
 const _nigerianStates = [
   'Abia','Adamawa','Akwa Ibom','Anambra','Bauchi','Bayelsa','Benue','Borno',
@@ -47,6 +49,9 @@ class _OnboardClientScreenState extends ConsumerState<OnboardClientScreen> {
   final _nokPhone = TextEditingController();
   final _notes = TextEditingController();
 
+  // Tags/categories selected for this client (user-created, not hardcoded).
+  Set<String> _selectedTagIds = {};
+
   @override
   void dispose() {
     for (final c in [
@@ -62,13 +67,17 @@ class _OnboardClientScreenState extends ConsumerState<OnboardClientScreen> {
       _fullName.text.trim().isNotEmpty &&
       (_phone.text.trim().isEmpty || _phone.text.trim().length >= 10);
 
+  void _setSelectedTags(Set<String> ids) {
+    setState(() => _selectedTagIds = ids);
+  }
+
   Future<void> _submit() async {
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      final profile = ref.read(currentProfileProvider).valueOrNull;
+      final profile = ref.read(currentProfileProvider).value;
       if (profile?.agencyId == null) {
         throw Exception('No agency on your profile. Contact your admin.');
       }
@@ -89,6 +98,15 @@ class _OnboardClientScreenState extends ConsumerState<OnboardClientScreen> {
         nextOfKinPhone: _nokPhone.text,
         notes: _notes.text,
       );
+
+      // Assign any selected tags to the new client.
+      if (_selectedTagIds.isNotEmpty) {
+        await ref.read(clientTagsRepoProvider).setClientTags(
+              agencyId: profile.agencyId!,
+              clientId: newId,
+              tagIds: _selectedTagIds.toList(),
+            );
+      }
 
       // Bust the clients list cache so the new row appears
       ref.invalidate(clientsPageProvider);
@@ -432,6 +450,11 @@ class _Step3Nok extends StatelessWidget {
           controller: state._notes,
           hint: 'Anything your team should know about this client',
           maxLines: 3,
+        ),
+        const SizedBox(height: 20),
+        TagPicker(
+          selectedTagIds: state._selectedTagIds,
+          onChanged: state._setSelectedTags,
         ),
       ],
     );
