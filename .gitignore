@@ -46,4 +46,4 @@ app.*.map.json
 supabase/.temp/
 
 # FVM Version Cache
-.fvm/
+.fvm/android/app/.cxx/
