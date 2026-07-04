@@ -87,24 +87,38 @@ Deno.serve(async (req) => {
       return json({ error: "No custom domain to verify" }, 400);
     }
 
-    // 1. Ask Resend to verify (kick off / re-check DNS).
-    await fetch(`${RESEND_DOMAINS_URL}/${domainId}/verify`, {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${RESEND_API_KEY}` },
-    }).catch(() => {/* non-fatal; we still read status below */});
+    // 1. Read the CURRENT status first. Calling the verify endpoint resets the
+    //    domain to "pending" while it re-checks, so if the domain is already
+    //    verified on Resend's side, reading first avoids a false "pending".
+    const readStatus = async () => {
+      const r = await fetch(`${RESEND_DOMAINS_URL}/${domainId}`, {
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}` },
+      });
+      const d = await r.json();
+      return { ok: r.ok, data: d };
+    };
 
-    // 2. Read authoritative status.
-    const getRes = await fetch(`${RESEND_DOMAINS_URL}/${domainId}`, {
-      headers: { "Authorization": `Bearer ${RESEND_API_KEY}` },
-    });
-    const getData = await getRes.json();
-    if (!getRes.ok) {
+    let { ok: getOk, data: getData } = await readStatus();
+    if (!getOk) {
       return json({
         error: "Could not read domain status from our email provider.",
         details: getData,
       }, 502);
     }
 
+    // 2. If not yet verified, trigger a re-check, then read again so the user
+    //    gets an up-to-date result. If already verified, skip the trigger
+    //    entirely (triggering would momentarily flip it back to pending).
+    if (String(getData?.status ?? "") !== "verified") {
+      await fetch(`${RESEND_DOMAINS_URL}/${domainId}/verify`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${RESEND_API_KEY}` },
+      }).catch(() => {/* non-fatal */});
+      // Give Resend a moment, then re-read.
+      await new Promise((r) => setTimeout(r, 1500));
+      const second = await readStatus();
+      if (second.ok) getData = second.data;
+    }
     const resendStatus = String(getData?.status ?? "pending");
     const status = mapStatus(resendStatus);
     const records = getData?.records ?? undefined;
