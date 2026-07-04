@@ -95,6 +95,17 @@ class _SignaturePadState extends State<SignaturePad> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Draw / upload mode toggle.
+        Row(
+          children: [
+            _modeChip(SignatureMode.draw, 'Draw', Icons.draw_outlined),
+            const SizedBox(width: 8),
+            _modeChip(
+                SignatureMode.upload, 'Upload image', Icons.cloud_upload_outlined),
+          ],
+        ),
+        const SizedBox(height: 10),
+
         // Clear button only (no mode picker — parent handles that)
         if (_hasContent)
           Align(
