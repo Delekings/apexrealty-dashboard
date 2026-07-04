@@ -43,6 +43,7 @@ import '../../features/properties/presentation/screens/new_property_screen.dart'
 import '../../features/properties/presentation/screens/edit_property_screen.dart';
 import '../../features/settings/presentation/screens/contract_template_screen.dart';
 import '../../features/email/presentation/screens/email_settings_screen.dart';
+import '../../features/email/presentation/screens/custom_domain_screen.dart';
 import '../../features/shortlet/presentation/screens/booking_detail_screen.dart';
 import '../../features/email/presentation/screens/email_campaigns_screen.dart';
 import '../../features/email/presentation/screens/email_builder_screen.dart';
@@ -300,6 +301,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/email/settings',
             builder: (_, __) => const EmailSettingsScreen(),
+          ),
+          GoRoute(
+            path: '/email/custom-domain',
+            builder: (_, __) => const CustomDomainScreen(),
           ),
           GoRoute(
             path: '/contracts/:id',

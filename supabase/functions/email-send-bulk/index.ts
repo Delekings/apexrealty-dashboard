@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
         // Load agency config
         const { data: cfg } = await supabase
             .from("email_provider_config")
-            .select("from_name, reply_to_email")
+            .select("from_name, reply_to_email, custom_domain, custom_from_prefix, custom_domain_status")
             .eq("agency_id", agencyId)
             .maybeSingle();
 
@@ -184,7 +184,14 @@ Deno.serve(async (req) => {
             ? rawFromName
             : (agency?.name ?? "Lintel");
         const replyTo = cfg?.reply_to_email ?? agency?.email ?? undefined;
-        const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        // Use the agency's verified custom domain if they have one; otherwise
+        // fall back to the shared Lintel sending address.
+        const sharedFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        const hasVerifiedDomain = cfg?.custom_domain_status === "verified" &&
+            cfg?.custom_domain && cfg?.custom_from_prefix;
+        const fromEmail = hasVerifiedDomain
+            ? `${cfg!.custom_from_prefix}@${cfg!.custom_domain}`
+            : sharedFrom;
         const fromHeader = `${fromName} <${fromEmail}>`;
 
         // Create campaign row

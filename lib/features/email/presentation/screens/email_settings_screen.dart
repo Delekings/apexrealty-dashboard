@@ -312,6 +312,44 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
                 'Leave blank to use your agency\'s primary email.',
           ),
 
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => context.push('/email/custom-domain'),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.brandLight.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.brand.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.language, color: AppColors.brand, size: 20),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Custom sending domain',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
+                        SizedBox(height: 2),
+                        Text(
+                          'Send from your own domain instead of the shared '
+                          'Lintel address. (Paid plan)',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, color: AppColors.muted),
+                ],
+              ),
+            ),
+          ),
+
           if (_error != null) ...[
             const SizedBox(height: 10),
             Container(

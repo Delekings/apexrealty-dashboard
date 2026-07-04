@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
             // Load agency email config + agency name
             const { data: cfgT } = await supabase
                 .from("email_provider_config")
-                .select("from_name, reply_to_email")
+                .select("from_name, reply_to_email, custom_domain, custom_from_prefix, custom_domain_status")
                 .eq("agency_id", agencyId)
                 .maybeSingle();
             const { data: agencyT } = await supabase
@@ -86,8 +86,9 @@ Deno.serve(async (req) => {
                 .single();
             const fromNameT = cfgT?.from_name ?? agencyT?.name ?? "Lintel";
             const replyToT = cfgT?.reply_to_email ?? agencyT?.email ?? undefined;
-            const fromEmailT =
-                Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+            const sharedFromT = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+            const hasVerifiedT = cfgT?.custom_domain_status === "verified" && cfgT?.custom_domain && cfgT?.custom_from_prefix;
+            const fromEmailT = hasVerifiedT ? `${cfgT!.custom_from_prefix}@${cfgT!.custom_domain}` : sharedFromT;
 
             // Look up a client with this email in the same agency so we can
             // personalise the preview exactly as a real send would look.
@@ -175,7 +176,7 @@ Deno.serve(async (req) => {
         // 6. Load agency email config (optional; falls back to defaults)
         const { data: cfg } = await supabase
             .from("email_provider_config")
-            .select("from_name, reply_to_email")
+            .select("from_name, reply_to_email, custom_domain, custom_from_prefix, custom_domain_status")
             .eq("agency_id", agencyId)
             .maybeSingle();
 
@@ -187,7 +188,9 @@ Deno.serve(async (req) => {
 
         const fromName = cfg?.from_name ?? agency?.name ?? "Lintel";
         const replyTo = cfg?.reply_to_email ?? agency?.email ?? undefined;
-        const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        const sharedFrom = Deno.env.get("RESEND_FROM_EMAIL") ?? "hello@mail.getlintel.org";
+        const hasVerifiedDomain = cfg?.custom_domain_status === "verified" && cfg?.custom_domain && cfg?.custom_from_prefix;
+        const fromEmail = hasVerifiedDomain ? `${cfg!.custom_from_prefix}@${cfg!.custom_domain}` : sharedFrom;
         const fromHeader = `${fromName} <${fromEmail}>`;
 
         // 7. Create campaign + message rows (queued)

@@ -246,6 +246,11 @@ class EmailProviderConfig {
   final bool customDomainVerified;
   final String? unsubscribeFooterText;
   final DateTime updatedAt;
+  // Custom sending domain (0021).
+  final String? customDomain;
+  final String? customFromPrefix;
+  final String customDomainStatus; // none | pending | verified | failed
+  final List<dynamic> customDomainRecords;
 
   EmailProviderConfig({
     required this.agencyId,
@@ -255,6 +260,10 @@ class EmailProviderConfig {
     this.replyToEmail,
     this.customFromEmail,
     this.unsubscribeFooterText,
+    this.customDomain,
+    this.customFromPrefix,
+    this.customDomainStatus = 'none',
+    this.customDomainRecords = const [],
   });
 
   factory EmailProviderConfig.fromMap(Map<String, dynamic> m) =>
@@ -267,6 +276,12 @@ class EmailProviderConfig {
         (m['custom_domain_verified'] as bool?) ?? false,
         unsubscribeFooterText: m['unsubscribe_footer_text'] as String?,
         updatedAt: DateTime.parse(m['updated_at'] as String),
+        customDomain: m['custom_domain'] as String?,
+        customFromPrefix: m['custom_from_prefix'] as String?,
+        customDomainStatus:
+            (m['custom_domain_status'] as String?) ?? 'none',
+        customDomainRecords:
+            (m['custom_domain_records'] as List?) ?? const [],
       );
 }
 
@@ -432,6 +447,39 @@ class EmailRepository {
 
     if (row == null) return null;
     return EmailProviderConfig.fromMap(row);
+  }
+
+  /// Provision a custom sending domain via the domain-create Edge Function.
+  /// Returns the DNS records the agency must add. Throws with a friendly
+  /// message on gate/cap/validation failures.
+  Future<List<dynamic>> createCustomDomain({
+    required String domain,
+    required String prefix,
+  }) async {
+    final res = await _c.functions.invoke('domain-create', body: {
+      'domain': domain,
+      'prefix': prefix,
+    });
+    final data = res.data;
+    if (data is Map && data['ok'] == true) {
+      return (data['records'] as List?) ?? const [];
+    }
+    final err = (data is Map ? data['error'] : null) ??
+        'Could not create domain';
+    throw Exception(err);
+  }
+
+  /// Check/trigger verification via the domain-verify Edge Function.
+  /// Returns the current status: none | pending | verified | failed.
+  Future<String> verifyCustomDomain() async {
+    final res = await _c.functions.invoke('domain-verify');
+    final data = res.data;
+    if (data is Map && data['ok'] == true) {
+      return (data['status'] as String?) ?? 'pending';
+    }
+    final err = (data is Map ? data['error'] : null) ??
+        'Could not verify domain';
+    throw Exception(err);
   }
 
   Future<void> saveMyAgencyConfig({
