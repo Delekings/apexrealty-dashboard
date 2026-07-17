@@ -101,6 +101,35 @@ const _bottomCandidates = <({String route, IconData icon, String label})>[
   (route: '/properties', icon: Icons.home_work_outlined, label: 'Properties'),
 ];
 
+/// The mobile "home" destinations that show a hamburger (not a back arrow)
+/// in the top bar. These are the reachable primary tabs; every other screen
+/// is treated as a drill-down and gets a back control.
+const _primaryRoutes = <String>{'/', '/clients', '/bookings'};
+
+/// Known list routes whose `/xxx/:id` detail screens should back out to the
+/// list itself. Anything matching `<listRoute>/<something>` backs to
+/// `<listRoute>`; everything else backs to Dashboard.
+const _detailParents = <String>[
+  '/clients',
+  '/properties',
+  '/contracts',
+  '/bookings',
+];
+
+/// Computes where the mobile back arrow should navigate for [path].
+///
+/// Rules (per product decision):
+///   • A detail route like `/clients/123` → its list (`/clients`).
+///   • Everything else that isn't a primary tab (incl. all `/email/*`,
+///     settings, finances, staff, etc.) → Dashboard (`/`).
+String _backTargetFor(String path) {
+  for (final parent in _detailParents) {
+    // e.g. path == '/clients/123' → matches parent '/clients'
+    if (path.startsWith('$parent/')) return parent;
+  }
+  return '/';
+}
+
 /// Shared visibility predicate used by sidebar, rail and bottom nav so all
 /// three honour the same permission / marketer / coming-soon rules.
 List<_NavEntry> _visibleEntries(PermissionSet perms) {
@@ -188,6 +217,11 @@ class _AppShellState extends ConsumerState<AppShell> {
 
 class _TopBar extends ConsumerWidget implements PreferredSizeWidget {
   final dynamic profile;
+
+  /// True on mobile: the shell has a drawer, so the leading slot is used for
+  /// either a hamburger (on primary tabs) or a contextual back arrow (on
+  /// drill-down screens). False on desktop/tablet where the sidebar/rail is
+  /// always visible and no leading control is needed.
   final bool showMenuButton;
   const _TopBar({required this.profile, required this.showMenuButton});
 
@@ -196,8 +230,36 @@ class _TopBar extends ConsumerWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final currentPath = GoRouterState.of(context).uri.path;
+
+    // Decide the mobile leading control:
+    //   • primary tab  → hamburger that opens the drawer
+    //   • anything else → back arrow to a computed parent
+    // Because all in-app navigation uses context.go (no pop stack), the back
+    // arrow navigates explicitly rather than calling Navigator.pop.
+    Widget? leading;
+    if (showMenuButton) {
+      final isPrimary = _primaryRoutes.contains(currentPath);
+      if (isPrimary) {
+        leading = IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Menu',
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        );
+      } else {
+        leading = IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => context.go(_backTargetFor(currentPath)),
+        );
+      }
+    }
+
     return AppBar(
-      automaticallyImplyLeading: showMenuButton,
+      // We provide our own leading (or null on desktop/tablet), so never let
+      // the framework auto-insert one.
+      automaticallyImplyLeading: false,
+      leading: leading,
       title: Row(
         children: [
           Container(
