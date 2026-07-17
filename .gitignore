@@ -47,3 +47,10 @@ supabase/.temp/
 
 # FVM Version Cache
 .fvm/android/app/.cxx/
+
+# Native build artifacts (CMake / NDK)
+**/.cxx/
+
+# FVM — keep the version pin config, ignore the SDK + machine-local symlinks
+.fvm/flutter_sdk
+.fvm/versions/
