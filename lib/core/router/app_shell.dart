@@ -330,7 +330,17 @@ class _NavTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
-        onTap: () => context.go(item.route),
+        onTap: () {
+          // If this tile lives inside an open drawer (mobile), close it first
+          // so the drawer slides away on its own instead of lingering until
+          // the user taps the scrim. On desktop/tablet no drawer is open, so
+          // this guard is false and we navigate exactly as before.
+          final scaffold = Scaffold.maybeOf(context);
+          if (scaffold?.isDrawerOpen ?? false) {
+            Navigator.of(context).pop();
+          }
+          context.go(item.route);
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
