@@ -1,4 +1,4 @@
-// lib/features/clients/presentation/screens/client_detail_screen.dart
+// lib/features/clients/presentation/screens/client_detail_screen_v2.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,8 +24,7 @@ class ClientDetailScreen extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: async.when(
-        loading: () => const Center(
-            child: LintelLoader()),
+        loading: () => const Center(child: LintelLoader()),
         error: (e, _) => Center(
           child: Text('Couldn\'t load client: $e',
               style: const TextStyle(color: AppColors.danger)),
@@ -43,113 +42,152 @@ class _Body extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = detail.client;
-    final wide = MediaQuery.of(context).size.width >= 1000;
+    final size = MediaQuery.of(context).size;
+    final wide = size.width >= 1000; // two-column body
+    final narrow = size.width < 700; // stack header buttons under the name
+
+    // Action buttons — shared between the wide (single-row) and narrow
+    // (wrapped, below the name) header layouts.
+    final actions = <Widget>[
+      OutlinedButton.icon(
+        onPressed: () => _launchCall(c.phone),
+        icon: const Icon(Icons.phone_outlined, size: 16),
+        label: const Text('Call'),
+      ),
+      OutlinedButton.icon(
+        onPressed: () => _launchWhatsApp(c.phone),
+        icon: const Icon(Icons.chat_bubble_outline, size: 16),
+        label: const Text('WhatsApp'),
+      ),
+      OutlinedButton.icon(
+        onPressed: c.email == null || c.email!.isEmpty
+            ? null
+            : () => showDialog(
+          context: context,
+          builder: (_) => SendEmailDialog(detail: detail),
+        ),
+        icon: const Icon(Icons.mail_outline, size: 16),
+        label: const Text('Email'),
+      ),
+      FilledButton.icon(
+        onPressed: () {
+          // Future: navigate to new contract form pre-filling client
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('New contract — coming next')),
+          );
+        },
+        icon: const Icon(Icons.add, size: 16),
+        label: const Text('New contract'),
+      ),
+    ];
+
+    // Back button + avatar + name/email. The name/email column is Expanded
+    // and hard-capped to one line, so it can never wrap per-character again.
+    final identity = Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => context.go('/clients'),
+        ),
+        const SizedBox(width: 4),
+        CircleAvatar(
+          radius: 22,
+          backgroundColor: AppColors.brandLight,
+          child: Text(
+            _initials(c.fullName),
+            style: const TextStyle(
+                color: AppColors.brand,
+                fontSize: 14,
+                fontWeight: FontWeight.w600),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                c.fullName,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${c.phone}${c.email != null ? ' · ${c.email}' : ''}',
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    // On phones: identity on its own line, buttons wrapped beneath it.
+    // On wider screens: everything on one row as before.
+    final Widget header = narrow
+        ? Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        identity,
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: actions,
+        ),
+      ],
+    )
+        : Row(
+      children: [
+        Expanded(child: identity),
+        const SizedBox(width: 12),
+        for (int i = 0; i < actions.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          actions[i],
+        ],
+      ],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top header
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, size: 20),
-              onPressed: () => context.go('/clients'),
-            ),
-            const SizedBox(width: 4),
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: AppColors.brandLight,
-              child: Text(
-                _initials(c.fullName),
-                style: const TextStyle(
-                    color: AppColors.brand,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(c.fullName,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${c.phone}${c.email != null ? ' · ${c.email}' : ''}',
-                    style:
-                        const TextStyle(fontSize: 12, color: AppColors.muted),
-                  ),
-                ],
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => _launchCall(c.phone),
-              icon: const Icon(Icons.phone_outlined, size: 16),
-              label: const Text('Call'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => _launchWhatsApp(c.phone),
-              icon: const Icon(Icons.chat_bubble_outline, size: 16),
-              label: const Text('WhatsApp'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: c.email == null || c.email!.isEmpty
-                  ? null
-                  : () => showDialog(
-                context: context,
-                builder: (_) => SendEmailDialog(detail: detail),
-              ),
-              icon: const Icon(Icons.mail_outline, size: 16),
-              label: const Text('Email'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: () {
-                // Future: navigate to new contract form pre-filling client
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New contract — coming next')),
-                );
-              },
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('New contract'),
-            ),
-          ],
-        ),
+        // Top header (responsive)
+        header,
         const SizedBox(height: 16),
 
         // Body
         Expanded(
           child: wide
               ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 320,
-                      child: SingleChildScrollView(
-                        child: _OverviewCard(detail: detail),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: _MainColumn(detail: detail),
-                      ),
-                    ),
-                  ],
-                )
-              : SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _OverviewCard(detail: detail),
-                      const SizedBox(height: 12),
-                      _MainColumn(detail: detail),
-                    ],
-                  ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 320,
+                child: SingleChildScrollView(
+                  child: _OverviewCard(detail: detail),
                 ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _MainColumn(detail: detail),
+                ),
+              ),
+            ],
+          )
+              : SingleChildScrollView(
+            child: Column(
+              children: [
+                _OverviewCard(detail: detail),
+                const SizedBox(height: 12),
+                _MainColumn(detail: detail),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -184,7 +222,7 @@ class _OverviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = detail.client;
     final totalContractValue =
-        detail.contracts.fold<num>(0, (s, c) => s + c.totalPrice);
+    detail.contracts.fold<num>(0, (s, c) => s + c.totalPrice);
 
     return Card(
       child: Padding(
@@ -210,7 +248,7 @@ class _OverviewCard extends StatelessWidget {
                 children: [
                   const Text('Total contract value',
                       style:
-                          TextStyle(fontSize: 11, color: AppColors.brand)),
+                      TextStyle(fontSize: 11, color: AppColors.brand)),
                   const SizedBox(height: 2),
                   Text(
                     Formatters.naira(totalContractValue),
@@ -229,24 +267,24 @@ class _OverviewCard extends StatelessWidget {
   }
 
   Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 80,
-              child: Text(k,
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.muted)),
-            ),
-            Expanded(
-              child: Text(v,
-                  style:
-                      const TextStyle(fontSize: 13, color: AppColors.text)),
-            ),
-          ],
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 80,
+          child: Text(k,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.muted)),
         ),
-      );
+        Expanded(
+          child: Text(v,
+              style:
+              const TextStyle(fontSize: 13, color: AppColors.text)),
+        ),
+      ],
+    ),
+  );
 }
 
 class _MainColumn extends StatelessWidget {
@@ -289,7 +327,7 @@ class _ContractsCard extends StatelessWidget {
                   icon: Icons.assignment_outlined,
                   title: 'No contracts yet',
                   message:
-                      'When this client buys a property, the contract will appear here.',
+                  'When this client buys a property, the contract will appear here.',
                 ),
               )
             else
@@ -306,13 +344,14 @@ class _ContractsCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 36, height: 36,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: AppColors.brandLight,
               borderRadius: BorderRadius.circular(8),
             ),
-            child:
-                const Icon(Icons.home_work_outlined, color: AppColors.brand, size: 18),
+            child: const Icon(Icons.home_work_outlined,
+                color: AppColors.brand, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -321,15 +360,20 @@ class _ContractsCard extends StatelessWidget {
               children: [
                 Text(c.propertyTitle ?? '—',
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w500)),
+                        fontSize: 13, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
                 Text(
                   '${c.contractNo} · ${c.propertyLocation ?? ''}',
                   style:
-                      const TextStyle(fontSize: 11, color: AppColors.muted),
+                  const TextStyle(fontSize: 11, color: AppColors.muted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -374,17 +418,21 @@ class _PaymentsCard extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 8, height: 8,
+                        width: 8,
+                        height: 8,
                         decoration: const BoxDecoration(
-                          color: AppColors.brand, shape: BoxShape.circle),
+                            color: AppColors.brand, shape: BoxShape.circle),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           '${Formatters.naira(p.amount)} · ${p.channel}',
                           style: const TextStyle(fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Text(
                         Formatters.relative(p.paidAt),
                         style: const TextStyle(
@@ -431,8 +479,7 @@ class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.label);
   @override
   Widget build(BuildContext context) => Text(
-        label,
-        style:
-            const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-      );
+    label,
+    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+  );
 }

@@ -1,4 +1,6 @@
 // lib/features/email/presentation/widgets/new_campaign_dialog.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,6 +53,15 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
   ({String campaignId, int totalRecipients, int sentCount, int failedCount})?
   _result;
 
+  // Live send progress. The send runs server-side in the background; we poll
+  // the campaign every ~1.5s and show "N of M sent" so the dialog never looks
+  // frozen during a long send.
+  String? _progressCampaignId;
+  int _progressTotal = 0;
+  int _progressSent = 0;
+  int _progressFailed = 0;
+  Timer? _progressTimer;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +74,7 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
 
   @override
   void dispose() {
+    _progressTimer?.cancel();
     _campaignNameCtrl.dispose();
     _subjectCtrl.dispose();
     _bodyCtrl.dispose();
@@ -214,13 +226,61 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
         filter: _buildFilter(),
       );
 
-      setState(() => _result = result);
+      // The send now runs in the background server-side; switch to the live
+      // progress view and poll until the campaign reaches a final status.
+      setState(() {
+        _progressCampaignId = result.campaignId;
+        _progressTotal = result.totalRecipients;
+        _progressSent = 0;
+        _progressFailed = 0;
+      });
+      _startProgressPolling();
     } catch (e) {
       setState(() =>
       _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  void _startProgressPolling() {
+    _progressTimer?.cancel();
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 1500),
+        (timer) async {
+      final id = _progressCampaignId;
+      if (id == null) {
+        timer.cancel();
+        return;
+      }
+      try {
+        final p = await ref.read(_emailRepoProvider).campaignProgress(id);
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          _progressSent = p.sent;
+          _progressFailed = p.failed;
+        });
+        final finished =
+            p.done || (p.sent + p.failed) >= _progressTotal;
+        if (finished) {
+          timer.cancel();
+          setState(() {
+            _result = (
+              campaignId: id,
+              totalRecipients: _progressTotal,
+              sentCount: p.sent,
+              failedCount: p.failed,
+            );
+            _progressCampaignId = null;
+          });
+        }
+      } catch (_) {
+        // Transient polling error (network blip) — keep polling; the send
+        // continues server-side regardless.
+      }
+    });
   }
 
   Future<void> _schedule() async {
@@ -396,8 +456,63 @@ class _NewCampaignDialogState extends ConsumerState<NewCampaignDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (_progressCampaignId != null) return _progressView();
     if (_result != null) return _resultView();
     return _composeView();
+  }
+
+  Widget _progressView() {
+    final done = _progressSent + _progressFailed;
+    final total = _progressTotal == 0 ? 1 : _progressTotal;
+    final frac = (done / total).clamp(0.0, 1.0);
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Center(
+                child: Text('Sending campaign…',
+                    style: TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  '$done of $_progressTotal sent'
+                  '${_progressFailed > 0 ? " · $_progressFailed failed" : ""}',
+                  style:
+                      const TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: frac,
+                  minHeight: 10,
+                  backgroundColor: AppColors.brand.withOpacity(0.12),
+                  valueColor:
+                      const AlwaysStoppedAnimation(AppColors.brand),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Center(
+                child: Text(
+                  'You can keep this open — we\'ll let you know when it\'s done. '
+                  'Large sends take about a minute per 100 emails.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: AppColors.muted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _composeView() {

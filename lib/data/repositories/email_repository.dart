@@ -518,8 +518,10 @@ class EmailRepository {
         .toList();
   }
 
-  /// Send a campaign to multiple recipients defined by [filter].
-  Future<({String campaignId, int totalRecipients, int sentCount, int failedCount})>
+  /// Kick off a campaign send to the recipients defined by [filter].
+  /// The Edge Function queues the actual sending in the background and
+  /// returns immediately — poll [campaignProgress] for live progress.
+  Future<({String campaignId, int totalRecipients})>
   sendBulk({
     required String campaignName,
     required String subject,
@@ -542,15 +544,46 @@ class EmailRepository {
       }
 
       final data = res.data as Map<String, dynamic>;
+      // The function now queues the send in the background and returns
+      // immediately; live progress comes from campaignProgress() below.
       return (
       campaignId: data['campaignId'] as String,
       totalRecipients: (data['totalRecipients'] as num).toInt(),
-      sentCount: (data['sentCount'] as num).toInt(),
-      failedCount: (data['failedCount'] as num).toInt(),
       );
     } on FunctionException catch (e) {
       throw Exception(_extractError(e.details, e.status));
     }
+  }
+
+  /// Live progress for an in-flight campaign send. The send loop flips each
+  /// email_messages row to sent/failed as it goes, and stamps the campaign row
+  /// with a final status when done — so counting rows gives real progress.
+  Future<({int sent, int failed, bool done})> campaignProgress(
+      String campaignId) async {
+    final sentRes = await _c
+        .from('email_messages')
+        .select('id')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'sent')
+        .count(CountOption.exact);
+    final failedRes = await _c
+        .from('email_messages')
+        .select('id')
+        .eq('campaign_id', campaignId)
+        .eq('status', 'failed')
+        .count(CountOption.exact);
+    final campaign = await _c
+        .from('email_campaigns')
+        .select('status')
+        .eq('id', campaignId)
+        .single();
+
+    final status = campaign['status'] as String? ?? 'sending';
+    return (
+      sent: sentRes.count,
+      failed: failedRes.count,
+      done: status != 'sending',
+    );
   }
 
   /// Schedule a campaign to send at a future time. Does NOT dispatch

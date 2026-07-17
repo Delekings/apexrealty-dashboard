@@ -210,6 +210,47 @@ class ClientsRepository {
         .map((r) => ClientImportResultRow.fromMap(r as Map<String, dynamic>))
         .toList();
   }
+
+  /// Import rows in chunks so the UI can show real progress and very large
+  /// CSVs don't hit a single-call timeout. [onProgress] is called after each
+  /// chunk with (completed, total). Row indices from each chunk are offset so
+  /// the merged results map back to the original row order.
+  Future<List<ClientImportResultRow>> bulkImportChunked(
+    List<Map<String, dynamic>> rows, {
+    int chunkSize = 25,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final all = <ClientImportResultRow>[];
+    final total = rows.length;
+    var done = 0;
+
+    for (var start = 0; start < total; start += chunkSize) {
+      final end = (start + chunkSize) > total ? total : (start + chunkSize);
+      final chunk = rows.sublist(start, end);
+
+      final res = await _c.rpc(
+        'bulk_import_clients',
+        params: {'p_rows': chunk},
+      );
+
+      if (res is List) {
+        for (final r in res) {
+          final row = ClientImportResultRow.fromMap(r as Map<String, dynamic>);
+          // Offset the chunk-relative rowIndex back to the original position.
+          all.add(ClientImportResultRow(
+            rowIndex: row.rowIndex + start,
+            status: row.status,
+            clientId: row.clientId,
+            message: row.message,
+          ));
+        }
+      }
+
+      done = end;
+      onProgress?.call(done, total);
+    }
+    return all;
+  }
 }
 
 // --- Auxiliary types used by the repository ---

@@ -38,6 +38,8 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
 
   // Import state
   bool _importing = false;
+  int _importDone = 0;
+  int _importTotal = 0;
   List<ClientImportResultRow>? _results;
   String? _parseError;
 
@@ -122,11 +124,25 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
       return;
     }
 
-    setState(() => _importing = true);
+    setState(() {
+      _importing = true;
+      _importTotal = validRows.length;
+      _importDone = 0;
+    });
     try {
       final res = await ref
           .read(_clientsRepoProvider)
-          .bulkImport(validRows.map((r) => r.toRpcMap()).toList());
+          .bulkImportChunked(
+            validRows.map((r) => r.toRpcMap()).toList(),
+            onProgress: (done, total) {
+              if (mounted) {
+                setState(() {
+                  _importDone = done;
+                  _importTotal = total;
+                });
+              }
+            },
+          );
       setState(() => _results = res);
 
       // Apply the batch tags to every successfully inserted client (2A).
@@ -168,37 +184,94 @@ class _ImportClientsScreenState extends ConsumerState<ImportClientsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, size: 18),
-                onPressed: () => context.go('/clients'),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    onPressed: _importing ? null : () => context.go('/clients'),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Import clients',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
+              const SizedBox(height: 8),
               const Text(
-                'Import clients',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                'Bring in your existing client list from a CSV, Excel file, or by pasting from a spreadsheet.',
+                style: TextStyle(fontSize: 13, color: AppColors.muted),
+              ),
+              const SizedBox(height: 20),
+              if (_results != null)
+                _resultsView()
+              else if (_rows.isEmpty)
+                _sourcePicker()
+              else
+                _editGrid(),
+            ],
+          ),
+        ),
+        if (_importing) _importOverlay(),
+      ],
+    );
+  }
+
+  Widget _importOverlay() {
+    final total = _importTotal == 0 ? 1 : _importTotal;
+    final frac = (_importDone / total).clamp(0.0, 1.0);
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withOpacity(0.45),
+        alignment: Alignment.center,
+        child: Container(
+          width: 360,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Importing clients…',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$_importDone of $_importTotal added',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, color: AppColors.muted),
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: frac,
+                  minHeight: 10,
+                  backgroundColor: AppColors.brand.withOpacity(0.12),
+                  valueColor: const AlwaysStoppedAnimation(AppColors.brand),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Please keep this window open until it finishes.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: AppColors.muted),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Bring in your existing client list from a CSV, Excel file, or by pasting from a spreadsheet.',
-            style: TextStyle(fontSize: 13, color: AppColors.muted),
-          ),
-          const SizedBox(height: 20),
-          if (_results != null)
-            _resultsView()
-          else if (_rows.isEmpty)
-            _sourcePicker()
-          else
-            _editGrid(),
-        ],
+        ),
       ),
     );
   }

@@ -1,4 +1,4 @@
-// lib/core/router/app_router.dart
+// lib/core/router/app_router_v2.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +54,15 @@ import '../../features/email/presentation/screens/email_automations_screen.dart'
 
 import 'app_shell.dart';
 
+/// Latches to `true` once the cold-start splash animation has finished.
+///
+/// Intentionally a top-level (process-lifetime) flag, NOT tied to any
+/// provider or widget, so it survives router/provider rebuilds. Once the
+/// splash has played a single time, it can never be shown again for the
+/// life of the app process — no auth event, token refresh, or rebuild
+/// will replay it.
+bool _splashShown = false;
+
 /// The single source of truth for navigation.
 ///
 /// Public routes (no auth required):
@@ -63,11 +72,21 @@ import 'app_shell.dart';
 /// All other routes are authenticated and rendered inside [AppShell]
 /// (sidebar + topbar).
 final routerProvider = Provider<GoRouter>((ref) {
-  // Rebuild router when auth state flips (sign in / sign out / recovery).
-  ref.watch(authStateProvider);
+  // IMPORTANT: do NOT `ref.watch(authStateProvider)` here.
+  //
+  // Watching it rebuilds the ENTIRE GoRouter on every auth event —
+  // including `signedIn` (right after login/register) and the periodic
+  // `tokenRefreshed` (Supabase refreshes the token ~hourly and on
+  // resume). A freshly-built GoRouter restarts at `initialLocation`
+  // (`/splash` on native), which is exactly what made the splash replay
+  // after login and after the app sat idle.
+  //
+  // Re-running auth gating on auth changes is handled correctly and
+  // non-destructively by `refreshListenable` below, which re-runs the
+  // redirect without tearing down the router.
 
   return GoRouter(
-    initialLocation: kIsWeb ? '/' : '/splash',
+    initialLocation: (kIsWeb || _splashShown) ? '/' : '/splash',
     refreshListenable: _AuthChangeNotifier(ref),
     debugLogDiagnostics: false,
     redirect: (context, state) {
@@ -77,10 +96,13 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // ---------- Special cases first (no bouncing) ----------
 
-      // Password recovery: user is "logged in" via recovery token,
-      // but we want them to set a new password before anything else.
-      // Cold-start splash (native only) plays before any auth gating.
-      if (path == '/splash') return null;
+      // Cold-start splash (native only) plays exactly once. Once it has
+      // played (`_splashShown` latched true), never show it again — any
+      // hit on /splash after that bounces home and lets the auth rules
+      // below decide the real destination.
+      if (path == '/splash') {
+        return _splashShown ? '/' : null;
+      }
 
       // Password recovery: user is "logged in" via recovery token,
       // but we want them to set a new password before anything else.
@@ -132,11 +154,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      // Cold-start animated splash; hands off to '/' (auth redirect decides).
+      // Cold-start animated splash; latches `_splashShown` and hands off
+      // to '/' (the auth redirect then decides the real destination).
       GoRoute(
         path: '/splash',
         builder: (context, __) => LintelSplashScreen(
-          onComplete: () => context.go('/'),
+          onComplete: () {
+            _splashShown = true; // latch: never replay the splash
+            context.go('/');
+          },
         ),
       ),
       // -------------------- PUBLIC --------------------

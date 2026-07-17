@@ -1,4 +1,4 @@
-// lib/core/widgets/lintel_splash.dart
+// lib/core/widgets/lintel_splash_v2.dart
 //
 // Animated splash screen for the Lintel app.
 // Plays lintel_splash.json once, then calls [onComplete] (e.g. to navigate home).
@@ -58,20 +58,28 @@ class _LintelSplashScreenState extends State<LintelSplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Cap the logo to a sensible size and keep it centered on every screen.
+    // Use the shorter screen dimension so it stays balanced on tall phones
+    // and wide tablets alike, then clamp so it never gets too big or too small.
+    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
+    final logoSize = (shortestSide * 0.5).clamp(160.0, 320.0);
+
     return Scaffold(
       backgroundColor: _green,
       body: Center(
-        child: Lottie.asset(
-          'assets/lottie/lintel_splash.json',
-          controller: _controller,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          onLoaded: (composition) {
-            _controller
-              ..duration = composition.duration
-              ..forward(from: 0);
-          },
+        child: SizedBox(
+          width: logoSize,
+          height: logoSize,
+          child: Lottie.asset(
+            'assets/lottie/lintel_splash.json',
+            controller: _controller,
+            fit: BoxFit.contain, // was BoxFit.cover — that cropped & oversized it
+            onLoaded: (composition) {
+              _controller
+                ..duration = composition.duration
+                ..forward(from: 0);
+            },
+          ),
         ),
       ),
     );

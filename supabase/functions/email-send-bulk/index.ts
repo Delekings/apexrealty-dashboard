@@ -240,7 +240,14 @@ Deno.serve(async (req) => {
             return json({ error: "Could not log messages", details: mErr }, 500);
         }
 
-        // Dispatch to Resend with rate limiting (Resend free: 2/sec)
+        // Dispatch to Resend with rate limiting (Resend free: 2/sec).
+        //
+        // The loop runs as a BACKGROUND task (EdgeRuntime.waitUntil) so we can
+        // return the campaign id immediately. The client polls email_messages
+        // for live progress ("23 of 58 sent…") instead of staring at a frozen
+        // dialog for the whole send. Each message row flips to sent/failed as
+        // the loop progresses, and the campaign row gets the final status.
+        const runSendLoop = async () => {
         let sentCount = 0;
         let failedCount = 0;
         const sleepMs = 600; // ~1.67/sec, well under limit
@@ -322,13 +329,31 @@ Deno.serve(async (req) => {
             sent_count: sentCount,
             failed_count: failedCount,
         }).eq("id", campaignId);
+        }; // end runSendLoop
+
+        // Run the loop in the background if the runtime supports it (Supabase
+        // Edge Runtime exposes EdgeRuntime.waitUntil). Fall back to awaiting
+        // inline — old behaviour — if it doesn't, so sends never get dropped.
+        const loopPromise = runSendLoop().catch(async (e) => {
+            // Belt-and-braces: never leave a campaign stuck in "sending".
+            await supabase.from("email_campaigns").update({
+                status: "failed",
+                send_completed_at: new Date().toISOString(),
+            }).eq("id", campaignId);
+            console.error("send loop crashed:", e);
+        });
+        const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }).EdgeRuntime;
+        if (edgeRuntime?.waitUntil) {
+            edgeRuntime.waitUntil(loopPromise);
+        } else {
+            await loopPromise;
+        }
 
         return json({
             success: true,
             campaignId,
             totalRecipients: eligible.length,
-            sentCount,
-            failedCount,
+            queued: true,
         });
     } catch (e) {
         return json({ error: String(e) }, 500);
