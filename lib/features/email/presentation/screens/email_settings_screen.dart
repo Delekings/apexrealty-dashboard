@@ -132,8 +132,6 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
                         _infoCard(),
                         const SizedBox(height: 20),
                         _sendingCard(),
-                        const SizedBox(height: 20),
-                        _domainCard(cfg),
                       ],
                     ),
                   ),
@@ -268,8 +266,8 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
           SizedBox(height: 6),
           Text(
             'Emails go out from Lintel\'s shared address with your agency\'s name '
-                'on them. Replies go to your Reply-to address. Later, you can verify '
-                'your own domain to send from your real email.',
+                'on them. Replies go to your Reply-to address. On a paid plan you '
+                'can verify your own domain below and send from your real email.',
             style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.5),
           ),
         ],
@@ -379,75 +377,6 @@ class _EmailSettingsScreenState extends ConsumerState<EmailSettingsScreen>
                 label: Text(_saving ? 'Saving…' : 'Save'),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _domainCard(EmailProviderConfig? cfg) {
-    final verified = cfg?.customDomainVerified ?? false;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Verify your own domain',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600)),
-                    SizedBox(height: 2),
-                    Text(
-                      'Send emails from your real address (e.g. info@yourcompany.com) '
-                          'for higher trust and deliverability.',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.muted, height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: verified
-                      ? AppColors.brand.withOpacity(0.1)
-                      : AppColors.warnLight,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  verified ? 'VERIFIED' : 'NOT VERIFIED',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: verified ? AppColors.brand : AppColors.warn,
-                      letterSpacing: 0.8),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text(
-                    'Domain verification is coming soon. For now, emails send from Lintel\'s shared address.'),
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 3),
-              ));
-            },
-            icon: const Icon(Icons.verified_outlined, size: 14),
-            label: const Text('Set up domain (coming soon)'),
           ),
         ],
       ),

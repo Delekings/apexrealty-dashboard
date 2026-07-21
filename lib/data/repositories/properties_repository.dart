@@ -288,6 +288,63 @@ class PropertiesRepository {
   }
 
   // ============================================================
+  // Delete
+  // ============================================================
+
+  /// Permanently deletes a property and its unit types.
+  ///
+  /// Unit types are removed first so the delete succeeds regardless of
+  /// whether the FK uses CASCADE or RESTRICT. If contracts, bookings or
+  /// other records still reference the property, Postgres raises a
+  /// foreign-key violation (23503) which we surface as a readable message
+  /// rather than a raw database error.
+  Future<void> deleteProperty(String propertyId) async {
+    // Grab details up-front so we can log meaningfully after deletion.
+    Map<String, dynamic>? row;
+    try {
+      row = await _c
+          .from('properties')
+          .select('id, agency_id, title')
+          .eq('id', propertyId)
+          .maybeSingle();
+    } catch (_) {
+      // Non-fatal: we can still attempt the delete without the log entry.
+    }
+
+    try {
+      await _c
+          .from('property_unit_types')
+          .delete()
+          .eq('property_id', propertyId);
+
+      await _c.from('properties').delete().eq('id', propertyId);
+    } on PostgrestException catch (e) {
+      if (e.code == '23503') {
+        throw Exception(
+          'This property still has contracts or bookings linked to it, so it '
+          'cannot be deleted. Mark it inactive instead to hide it from your '
+          'listings while keeping the records.',
+        );
+      }
+      rethrow;
+    }
+
+    if (row != null) {
+      try {
+        await _c.from('activity_log').insert({
+          'agency_id': row['agency_id'],
+          'entity_type': 'property',
+          'entity_id': propertyId,
+          'action': 'deleted',
+          'description': 'Property "${row['title']}" was deleted',
+        });
+      } catch (_) {
+        // Logging must never fail the delete itself.
+      }
+    }
+  }
+
+  // ============================================================
   // Photos
   // ============================================================
 

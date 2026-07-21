@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/utils/formatters.dart';
 import '../../../../core/widgets/photo_picker.dart';
 import '../../../../data/models/models.dart';
 import '../../../auth/providers/auth_providers.dart';
@@ -26,7 +25,7 @@ class PropertyDetailScreen extends ConsumerStatefulWidget {
 
 class _PropertyDetailScreenState extends ConsumerState<PropertyDetailScreen> {
   int _activePhotoIndex = 0;
-  bool _uploadingMore = false;
+  final bool _uploadingMore = false;
 
   Future<void> _addMorePhotos() async {
     showDialog(
@@ -92,48 +91,84 @@ class _Body extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width >= 1000;
+    final size = MediaQuery.of(context).size;
+    final wide = size.width >= 1000;
+    final narrow = size.width < 700; // stack header actions under the title
+
+    // Header action buttons, shared between the wide and narrow layouts.
+    final actions = <Widget>[
+      OutlinedButton.icon(
+        onPressed: () => context.go('/properties/${property.id}/edit'),
+        icon: const Icon(Icons.edit_outlined, size: 16),
+        label: const Text('Edit'),
+      ),
+      OutlinedButton.icon(
+        onPressed: onAddPhotos,
+        icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
+        label: const Text('Add photos'),
+      ),
+      _DeletePropertyButton(property: property),
+    ];
+
+    // Back arrow + title/location. Title is capped to one line so it can
+    // never wrap per-character when space is tight.
+    final identity = Row(
+      children: [
+        IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => context.go('/properties'),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                property.title,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '${property.location}, ${property.state}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.muted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final Widget header = narrow
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              identity,
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: actions),
+            ],
+          )
+        : Row(
+            children: [
+              Expanded(child: identity),
+              const SizedBox(width: 12),
+              for (int i = 0; i < actions.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                actions[i],
+              ],
+            ],
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top header
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, size: 20),
-              onPressed: () => context.go('/properties'),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(property.title,
-                      style: const TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${property.location}, ${property.state}',
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.muted),
-                  ),
-                ],
-              ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () =>
-                  context.go('/properties/${property.id}/edit'),
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Edit'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: onAddPhotos,
-              icon: const Icon(Icons.add_photo_alternate_outlined, size: 16),
-              label: const Text('Add photos'),
-            ),
-          ],
-        ),
+        // Top header (responsive)
+        header,
         const SizedBox(height: 16),
 
         Expanded(
@@ -175,6 +210,110 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Delete action + confirmation dialog.
+///
+/// Kept as its own Consumer so [_Body] can stay a StatelessWidget. Deleting
+/// is permanent, so the user must confirm; foreign-key failures (property
+/// still referenced by contracts/bookings) are surfaced as a readable
+/// message rather than a raw Postgres error.
+class _DeletePropertyButton extends ConsumerStatefulWidget {
+  final Property property;
+  const _DeletePropertyButton({required this.property});
+
+  @override
+  ConsumerState<_DeletePropertyButton> createState() =>
+      _DeletePropertyButtonState();
+}
+
+class _DeletePropertyButtonState
+    extends ConsumerState<_DeletePropertyButton> {
+  bool _deleting = false;
+
+  Future<void> _confirmAndDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Delete this property?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '"${widget.property.title}" and all of its unit types will be '
+              'permanently removed. This cannot be undone.',
+              style: const TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'If the property has contracts or bookings attached, it cannot '
+              'be deleted — mark it inactive instead.',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await ref
+          .read(propertiesRepoProvider)
+          .deleteProperty(widget.property.id);
+
+      ref.invalidate(propertiesPageProvider);
+      ref.invalidate(propertyDetailProvider(widget.property.id));
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('"${widget.property.title}" deleted'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ));
+      context.go('/properties');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(e.toString().replaceFirst('Exception: ', '')),
+        backgroundColor: AppColors.danger,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: _deleting ? null : _confirmAndDelete,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.danger,
+        side: const BorderSide(color: AppColors.danger),
+      ),
+      icon: _deleting
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.delete_outline, size: 16),
+      label: Text(_deleting ? 'Deleting…' : 'Delete'),
     );
   }
 }
